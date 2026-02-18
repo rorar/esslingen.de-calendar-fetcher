@@ -9,8 +9,12 @@
       "structured-data/loadData_20307012.json",
       "structured-data/jsonld_20307012_generated.json"
     ],
-    "boilerplate_dir": "output/boilerplate",
+    "boilerplate_dir": "output/boilerplate/runtime-snapshots",
     "boilerplate_files": []
+  },
+  "schema": {
+    "enabled": true,
+    "file": ""
   },
   "preprocessing": {
     "enabled": true,
@@ -54,38 +58,12 @@
       "%d.%m.%Y"
     ],
     "date_output_format": "%Y-%m-%d",
-    "fields": [
-      "id",
-      "title",
-      "start_date",
-      "end_date",
-      "time",
-      "description",
-      "location_name",
-      "location_postal_code",
-      "location_city",
-      "category",
-      "series",
-      "url",
-      "source_type",
-      "source_file"
+    "_notes_schema_fields": [
+      "When export.fields is empty, field order is read from schema boilerplate.",
+      "When export.field_mappings is empty, labels are read from schema boilerplate."
     ],
-    "field_mappings": {
-      "id": "ID",
-      "title": "Titel",
-      "start_date": "Startdatum",
-      "end_date": "Enddatum",
-      "time": "Uhrzeit",
-      "description": "Beschreibung",
-      "location_name": "Ort",
-      "location_postal_code": "PLZ",
-      "location_city": "Stadt",
-      "category": "Kategorie",
-      "series": "Sammelbegriff",
-      "url": "URL",
-      "source_type": "QuelleTyp",
-      "source_file": "QuelleDatei"
-    },
+    "fields": [],
+    "field_mappings": {},
     "csv": {
       "delimiter": ";",
       "quotechar": "\"",

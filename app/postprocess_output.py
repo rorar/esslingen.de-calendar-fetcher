@@ -22,7 +22,10 @@ def main() -> int:
     parser.add_argument(
         "--from-boilerplate",
         action="store_true",
-        help="Read records from output/boilerplate/*.json (or config input.boilerplate_*) instead of raw input files",
+        help=(
+            "Read records from output/boilerplate/runtime-snapshots/*.json "
+            "(or config input.boilerplate_*) instead of raw input files"
+        ),
     )
     args = parser.parse_args()
 
@@ -38,6 +41,7 @@ def main() -> int:
 
     print("Post-processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
+    print(f"Schema boilerplate files: {len(written['schema_boilerplate'])}")
     print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")

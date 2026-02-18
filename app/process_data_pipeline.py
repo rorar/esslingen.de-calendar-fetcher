@@ -20,8 +20,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "structured-data/loadData_20307012.json",
             "structured-data/jsonld_20307012_generated.json",
         ],
-        "boilerplate_dir": "output/boilerplate",
+        "boilerplate_dir": "output/boilerplate/runtime-snapshots",
         "boilerplate_files": [],
+    },
+    "schema": {
+        "enabled": True,
+        "file": "",
     },
     "preprocessing": {
         "enabled": True,
@@ -50,38 +54,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "filename_context": {},
         "date_input_formats": ["%Y-%m-%d", "%d.%m.%Y"],
         "date_output_format": "%Y-%m-%d",
-        "fields": [
-            "id",
-            "title",
-            "start_date",
-            "end_date",
-            "time",
-            "description",
-            "location_name",
-            "location_postal_code",
-            "location_city",
-            "category",
-            "series",
-            "url",
-            "source_type",
-            "source_file",
-        ],
-        "field_mappings": {
-            "id": "ID",
-            "title": "Titel",
-            "start_date": "Startdatum",
-            "end_date": "Enddatum",
-            "time": "Uhrzeit",
-            "description": "Beschreibung",
-            "location_name": "Ort",
-            "location_postal_code": "PLZ",
-            "location_city": "Stadt",
-            "category": "Kategorie",
-            "series": "Sammelbegriff",
-            "url": "URL",
-            "source_type": "QuelleTyp",
-            "source_file": "QuelleDatei",
-        },
+        "fields": [],
+        "field_mappings": {},
         "csv": {
             "delimiter": ";",
             "quotechar": '"',
@@ -96,6 +70,26 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     },
 }
+
+CANONICAL_SCHEMA_ID = "canonical_event_v1"
+CANONICAL_SCHEMA_FIELDS: list[dict[str, Any]] = [
+    {"name": "id", "label": "ID", "type": "string", "required": False},
+    {"name": "title", "label": "Titel", "type": "string", "required": False},
+    {"name": "start_date", "label": "Startdatum", "type": "date", "required": False},
+    {"name": "end_date", "label": "Enddatum", "type": "date", "required": False},
+    {"name": "time", "label": "Uhrzeit", "type": "string", "required": False},
+    {"name": "description", "label": "Beschreibung", "type": "string", "required": False},
+    {"name": "location_name", "label": "Ort", "type": "string", "required": False},
+    {"name": "location_postal_code", "label": "PLZ", "type": "string", "required": False},
+    {"name": "location_city", "label": "Stadt", "type": "string", "required": False},
+    {"name": "category", "label": "Kategorie", "type": "string", "required": False},
+    {"name": "series", "label": "Sammelbegriff", "type": "string", "required": False},
+    {"name": "url", "label": "URL", "type": "string", "required": False},
+    {"name": "source_type", "label": "QuelleTyp", "type": "string", "required": False},
+    {"name": "source_file", "label": "QuelleDatei", "type": "string", "required": False},
+]
+CANONICAL_FIELD_ORDER = [field["name"] for field in CANONICAL_SCHEMA_FIELDS]
+CANONICAL_FIELD_LABELS = {field["name"]: field["label"] for field in CANONICAL_SCHEMA_FIELDS}
 
 
 class SafeFormatDict(dict[str, Any]):
@@ -127,6 +121,24 @@ def normalize_input_mode(input_cfg: dict[str, Any]) -> None:
     if mode not in {"raw", "boilerplate"}:
         raise ValueError("input.mode muss 'raw' oder 'boilerplate' sein")
     input_cfg["mode"] = mode
+
+
+def ensure_schema_config(config: dict[str, Any]) -> None:
+    schema_cfg = config.get("schema")
+    if not isinstance(schema_cfg, dict):
+        schema_cfg = {}
+
+    enabled_raw = schema_cfg.get("enabled", True)
+    if isinstance(enabled_raw, str):
+        enabled = parse_bool(enabled_raw)
+    else:
+        enabled = bool(enabled_raw)
+
+    schema_file = str(schema_cfg.get("file", "")).strip()
+
+    schema_cfg["enabled"] = enabled
+    schema_cfg["file"] = schema_file
+    config["schema"] = schema_cfg
 
 
 def ensure_rows_per_file_config(export_cfg: dict[str, Any]) -> None:
@@ -211,6 +223,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     updated = deepcopy(config)
     env = os.environ
     ensure_rows_per_file_config(updated["export"])
+    ensure_schema_config(updated)
 
     if value := env.get("PROCESS_INPUT_MODE"):
         updated["input"]["mode"] = value.strip().lower()
@@ -220,6 +233,10 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         updated["input"]["boilerplate_dir"] = value
     if value := env.get("PROCESS_BOILERPLATE_FILES"):
         updated["input"]["boilerplate_files"] = parse_list(value)
+    if value := env.get("PROCESS_SCHEMA_ENABLED"):
+        updated["schema"]["enabled"] = parse_bool(value)
+    if value := env.get("PROCESS_SCHEMA_FILE"):
+        updated["schema"]["file"] = value
 
     if value := env.get("PROCESS_TEXT_FIELDS"):
         updated["preprocessing"]["text_fields"] = parse_list(value)
@@ -272,6 +289,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         updated["export"]["filename_context"]["category"] = value
 
     ensure_rows_per_file_config(updated["export"])
+    ensure_schema_config(updated)
     normalize_input_mode(updated["input"])
     updated["export"]["line_ending"] = decode_escapes(str(updated["export"]["line_ending"]))
     normalize_csv_options(updated)
@@ -287,6 +305,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
 
     merged = deep_merge_dict(DEFAULT_CONFIG, user_config)
     ensure_rows_per_file_config(merged["export"])
+    ensure_schema_config(merged)
     normalize_input_mode(merged["input"])
     return apply_env_overrides(merged)
 
@@ -310,23 +329,100 @@ def join_values(value: Any) -> str:
     return str(value)
 
 
+def build_date_candidates(text: str) -> list[str]:
+    raw = text.strip().replace("\xa0", " ")
+    if not raw:
+        return []
+
+    out: list[str] = [raw]
+
+    german_match = re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", raw)
+    if german_match:
+        day, month, year = german_match.groups()
+        out.append(f"{int(day):02d}.{int(month):02d}.{year}")
+
+    iso_match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
+    if iso_match:
+        out.append(iso_match.group(1))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in out:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
+
+
 def format_date(value: Any, input_formats: list[str], output_format: str) -> str:
     text = join_values(value).strip()
     if not text:
         return ""
 
-    for fmt in input_formats:
+    candidates = build_date_candidates(text)
+    for candidate in candidates:
+        for fmt in input_formats:
+            try:
+                dt = datetime.strptime(candidate, fmt)
+                return dt.strftime(output_format)
+            except ValueError:
+                continue
+
+    for candidate in candidates:
         try:
-            dt = datetime.strptime(text, fmt)
+            dt = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
             return dt.strftime(output_format)
         except ValueError:
             continue
 
+    return text
+
+
+def parse_time_fragment(value: str) -> str | None:
+    text = value.strip()
+    match = re.fullmatch(r"(\d{1,2})(?::(\d{1,2}))?", text)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2) or "0")
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def normalize_time_text(value: Any) -> str:
+    text = join_values(value).strip()
+    if not text:
+        return ""
+
+    text = text.replace("–", "-").replace("—", "-")
+    text = re.sub(r"\s*uhr\b", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"\s+", " ", text)
+
+    range_parts = re.split(r"\s*-\s*|\s+bis\s+", text, maxsplit=1, flags=re.IGNORECASE)
+    if len(range_parts) == 2:
+        start = parse_time_fragment(range_parts[0])
+        end = parse_time_fragment(range_parts[1])
+        if start and end:
+            return f"{start}-{end}"
+
+    normalized = parse_time_fragment(text)
+    return normalized if normalized else text
+
+
+def extract_time_from_datetime(value: Any) -> str:
+    text = join_values(value).strip()
+    if not text:
+        return ""
+
     try:
         dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        return dt.strftime(output_format)
+        return dt.strftime("%H:%M")
     except ValueError:
-        return text
+        match = re.search(r"T(\d{2}):(\d{2})", text)
+        if match:
+            return f"{match.group(1)}:{match.group(2)}"
+        return ""
 
 
 def detect_source_type(record: dict[str, Any]) -> str:
@@ -348,7 +444,7 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
             "title": join_values(record.get("name")),
             "start_date": format_date(record.get("startDate"), date_input_formats, date_output_format),
             "end_date": format_date(record.get("endDate"), date_input_formats, date_output_format),
-            "time": "",
+            "time": extract_time_from_datetime(record.get("startDate")),
             "description": join_values(record.get("description")),
             "location_name": join_values(location.get("name") if isinstance(location, dict) else location),
             "location_postal_code": join_values(address.get("postalCode") if isinstance(address, dict) else ""),
@@ -365,7 +461,7 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
         "title": join_values(record.get("titel")),
         "start_date": format_date(record.get("von"), date_input_formats, date_output_format),
         "end_date": format_date(record.get("bis") or record.get("von"), date_input_formats, date_output_format),
-        "time": join_values(record.get("zeit")),
+        "time": normalize_time_text(record.get("zeit")),
         "description": join_values(record.get("beschreibung") or record.get("kurzbeschreibung")),
         "location_name": join_values(record.get("location")),
         "location_postal_code": join_values(record.get("location_plz")),
@@ -437,20 +533,125 @@ def read_boilerplate_records(boilerplate_file: Path) -> tuple[str, list[dict[str
     return source_name, safe_records
 
 
-def collect_boilerplate_input_files(config: dict[str, Any]) -> list[Path]:
+def runtime_snapshot_dir(output_dir: Path) -> Path:
+    return output_dir / "boilerplate" / "runtime-snapshots"
+
+
+def resolve_schema_boilerplate_file(config: dict[str, Any], output_dir: Path) -> Path:
+    schema_cfg = config.get("schema", {})
+    file_value = str(schema_cfg.get("file", "")).strip()
+    if file_value:
+        return Path(file_value)
+    return output_dir / "boilerplate" / "schema-boilerplates" / f"{CANONICAL_SCHEMA_ID}.json"
+
+
+def build_schema_boilerplate_payload() -> dict[str, Any]:
+    return {
+        "schema_id": CANONICAL_SCHEMA_ID,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "description": "Canonical schema boilerplate for event records. This file is the field source of truth.",
+        "fields": CANONICAL_SCHEMA_FIELDS,
+        "template_record": {name: "" for name in CANONICAL_FIELD_ORDER},
+    }
+
+
+def write_schema_boilerplate(config: dict[str, Any], output_dir: Path, encoding: str, line_ending: str) -> Path | None:
+    if not config.get("schema", {}).get("enabled", True):
+        return None
+
+    schema_path = resolve_schema_boilerplate_file(config, output_dir)
+    if schema_path.exists():
+        return schema_path
+    schema_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = build_schema_boilerplate_payload()
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if line_ending != "\n":
+        text = text.replace("\n", line_ending)
+    with schema_path.open("w", encoding=encoding, newline="") as fp:
+        fp.write(text)
+    return schema_path
+
+
+def load_schema_field_layout(config: dict[str, Any], output_dir: Path) -> tuple[list[str], dict[str, str]]:
+    if not config.get("schema", {}).get("enabled", True):
+        return [], {}
+
+    schema_path = resolve_schema_boilerplate_file(config, output_dir)
+    if not schema_path.exists():
+        return [], {}
+
+    payload = json.loads(schema_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Unerwartete Schema-Boilerplate-Struktur (Objekt erwartet): {schema_path}")
+
+    raw_fields = payload.get("fields")
+    if not isinstance(raw_fields, list):
+        raise ValueError(f"Unerwartete Schema-Boilerplate-Struktur ('fields' Liste erwartet): {schema_path}")
+
+    fields: list[str] = []
+    field_map: dict[str, str] = {}
+    for item in raw_fields:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if not name:
+            continue
+        fields.append(name)
+        label = str(item.get("label", "")).strip()
+        if label:
+            field_map[name] = label
+
+    dedup_fields: list[str] = []
+    seen: set[str] = set()
+    for name in fields:
+        if name not in seen:
+            seen.add(name)
+            dedup_fields.append(name)
+
+    return dedup_fields, field_map
+
+
+def resolve_export_layout(config: dict[str, Any], output_dir: Path) -> tuple[list[str], dict[str, str]]:
+    schema_fields, schema_map = load_schema_field_layout(config, output_dir)
+
+    configured_fields = [str(field).strip() for field in config["export"].get("fields", []) if str(field).strip()]
+    if configured_fields:
+        fields = configured_fields
+    elif schema_fields:
+        fields = schema_fields
+    else:
+        fields = list(CANONICAL_FIELD_ORDER)
+
+    raw_mapping = config["export"].get("field_mappings", {})
+    mapping_dict = raw_mapping if isinstance(raw_mapping, dict) else {}
+    configured_map = {str(key).strip(): str(value) for key, value in mapping_dict.items() if str(key).strip()}
+    field_map = dict(CANONICAL_FIELD_LABELS)
+    field_map.update(schema_map)
+    field_map.update(configured_map)
+    return fields, field_map
+
+
+def collect_boilerplate_input_files(config: dict[str, Any], output_dir: Path) -> list[Path]:
     input_cfg = config["input"]
     explicit_files = [str(path).strip() for path in input_cfg.get("boilerplate_files", []) if str(path).strip()]
     if explicit_files:
         return [Path(path) for path in explicit_files]
 
-    boilerplate_dir = Path(str(input_cfg.get("boilerplate_dir", "output/boilerplate")))
+    boilerplate_dir_raw = str(input_cfg.get("boilerplate_dir", "")).strip()
+    boilerplate_dir = Path(boilerplate_dir_raw) if boilerplate_dir_raw else runtime_snapshot_dir(output_dir)
     if not boilerplate_dir.exists():
-        raise FileNotFoundError(f"Boilerplate-Verzeichnis nicht gefunden: {boilerplate_dir}")
+        raise FileNotFoundError(f"Runtime-Snapshot-Verzeichnis nicht gefunden: {boilerplate_dir}")
 
     files = sorted(boilerplate_dir.glob("boilerplate_*.json"))
-    if not files:
-        raise FileNotFoundError(f"Keine Boilerplate-Dateien gefunden in: {boilerplate_dir}")
-    return files
+    if files:
+        return files
+
+    legacy_dir = output_dir / "boilerplate"
+    legacy_files = sorted(legacy_dir.glob("boilerplate_*.json")) if legacy_dir.exists() else []
+    if legacy_files and boilerplate_dir == runtime_snapshot_dir(output_dir):
+        return legacy_files
+
+    raise FileNotFoundError(f"Keine Runtime-Snapshot-Dateien gefunden in: {boilerplate_dir}")
 
 
 def write_boilerplate(
@@ -460,15 +661,15 @@ def write_boilerplate(
     encoding: str,
     line_ending: str,
 ) -> Path:
-    boilerplate_dir = output_dir / "boilerplate"
-    boilerplate_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_dir = runtime_snapshot_dir(output_dir)
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "source": source_name,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "record_count": len(records),
         "records": records,
     }
-    out_path = boilerplate_dir / f"boilerplate_{source_name}.json"
+    out_path = snapshot_dir / f"boilerplate_{source_name}.json"
     text = json.dumps(payload, ensure_ascii=False, indent=2)
     if line_ending != "\n":
         text = text.replace("\n", line_ending)
@@ -530,9 +731,9 @@ def csv_quoting_mode(mode: str) -> int:
         raise ValueError(f"Ungueltiger CSV quoting mode: {mode}") from exc
 
 
-def build_export_rows(records: list[dict[str, str]], config: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
-    fields: list[str] = config["export"]["fields"]
-    field_map: dict[str, str] = config["export"]["field_mappings"]
+def build_export_rows(
+    records: list[dict[str, Any]], fields: list[str], field_map: dict[str, str]
+) -> tuple[list[str], list[list[str]]]:
     headers = [field_map.get(field, field) for field in fields]
     rows: list[list[str]] = []
     for record in records:
@@ -596,6 +797,7 @@ def export_xml(
 
 def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[str, list[Path]]:
     normalize_input_mode(config["input"])
+    ensure_schema_config(config)
     output_dir = Path(str(config["export"]["output_dir"]))
     output_dir.mkdir(parents=True, exist_ok=True)
     encoding = str(config["export"]["encoding"])
@@ -606,14 +808,25 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
     rows_per_file = int(rows_cfg.get("value", 1000))
     timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    written: dict[str, list[Path]] = {"boilerplate": [], "boilerplate_input": [], "csv": [], "xml": []}
+    written: dict[str, list[Path]] = {
+        "boilerplate": [],
+        "schema_boilerplate": [],
+        "boilerplate_input": [],
+        "csv": [],
+        "xml": [],
+    }
+    schema_path = write_schema_boilerplate(config, output_dir, encoding, line_ending)
+    if schema_path is not None:
+        written["schema_boilerplate"].append(schema_path)
+
+    export_fields, export_field_map = resolve_export_layout(config, output_dir)
 
     def export_source_records(source_name: str, records: list[dict[str, Any]]) -> None:
         if not config["export"].get("enabled", True):
             return
 
         formats = [str(fmt).lower() for fmt in config["export"]["formats"]]
-        headers, raw_rows = build_export_rows(records, config)
+        headers, raw_rows = build_export_rows(records, export_fields, export_field_map)
         chunks = chunk_rows(raw_rows, rows_per_file) if rows_split_enabled else [raw_rows]
 
         for part_idx, chunk in enumerate(chunks, start=1):
@@ -665,7 +878,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
             written["boilerplate"].append(write_boilerplate(output_dir, source_name, records, encoding, line_ending))
             export_source_records(source_name, records)
     else:
-        boilerplate_files = collect_boilerplate_input_files(config)
+        boilerplate_files = collect_boilerplate_input_files(config, output_dir)
         for boilerplate_file in boilerplate_files:
             if not boilerplate_file.exists():
                 raise FileNotFoundError(f"Boilerplate-Datei nicht gefunden: {boilerplate_file}")
@@ -697,6 +910,7 @@ def main() -> int:
 
     print("Processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
+    print(f"Schema boilerplate files: {len(written['schema_boilerplate'])}")
     print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")

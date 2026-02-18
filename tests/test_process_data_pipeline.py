@@ -73,7 +73,7 @@ class TestProcessDataPipeline(unittest.TestCase):
             os.environ,
             {
                 "PROCESS_INPUT_MODE": "boilerplate",
-                "PROCESS_BOILERPLATE_DIR": "output/boilerplate",
+                "PROCESS_BOILERPLATE_DIR": "output/boilerplate/runtime-snapshots",
                 "PROCESS_BOILERPLATE_FILES": "a.json,b.json",
             },
             clear=False,
@@ -81,7 +81,7 @@ class TestProcessDataPipeline(unittest.TestCase):
             updated = pipeline.apply_env_overrides(base)
 
         self.assertEqual(updated["input"]["mode"], "boilerplate")
-        self.assertEqual(updated["input"]["boilerplate_dir"], "output/boilerplate")
+        self.assertEqual(updated["input"]["boilerplate_dir"], "output/boilerplate/runtime-snapshots")
         self.assertEqual(updated["input"]["boilerplate_files"], ["a.json", "b.json"])
 
     def test_run_pipeline_creates_boilerplate_and_split_exports(self) -> None:
@@ -161,15 +161,17 @@ class TestProcessDataPipeline(unittest.TestCase):
             written = pipeline.run_pipeline(cfg, timestamp="20260218_120000")
 
             self.assertEqual(len(written["boilerplate"]), 2)
+            self.assertEqual(len(written["schema_boilerplate"]), 1)
             self.assertGreaterEqual(len(written["csv"]), 3)
             self.assertGreaterEqual(len(written["xml"]), 3)
 
-            boilerplate_file = out_dir / "boilerplate" / "boilerplate_loadData_20307012.json"
+            boilerplate_file = out_dir / "boilerplate" / "runtime-snapshots" / "boilerplate_loadData_20307012.json"
             self.assertTrue(boilerplate_file.exists())
             payload = json.loads(boilerplate_file.read_text(encoding="utf-8"))
             self.assertEqual(payload["record_count"], 2)
             self.assertEqual(payload["records"][0]["title"], "Test Event")
             self.assertEqual(payload["records"][0]["description"], "Line1 Line2 & More")
+            self.assertEqual(payload["records"][0]["start_date"], "2026-02-18")
 
             csv_file = out_dir / "loadData_20307012_csv_part1.csv"
             self.assertTrue(csv_file.exists())
@@ -218,6 +220,7 @@ class TestProcessDataPipeline(unittest.TestCase):
             written = pipeline.run_pipeline(cfg, timestamp="20260218_130000")
 
             self.assertEqual(len(written["csv"]), 1)
+            self.assertEqual(len(written["schema_boilerplate"]), 1)
             expected = out_dir / "loadData_20307012_csv_20260218_130000.csv"
             self.assertTrue(expected.exists())
             self.assertNotIn("_part", expected.name)
@@ -282,6 +285,7 @@ class TestProcessDataPipeline(unittest.TestCase):
             written = pipeline.run_pipeline(cfg, timestamp="20260218_140000")
 
             self.assertEqual(len(written["boilerplate"]), 0)
+            self.assertEqual(len(written["schema_boilerplate"]), 1)
             self.assertEqual(len(written["boilerplate_input"]), 1)
             self.assertEqual(written["boilerplate_input"][0], boiler_file)
             self.assertEqual(len(written["csv"]), 1)
@@ -291,7 +295,61 @@ class TestProcessDataPipeline(unittest.TestCase):
             csv_text = expected.read_text(encoding="utf-8")
             self.assertIn("Bereinigt", csv_text)
             self.assertIn("A & B", csv_text)
-            self.assertFalse((out_dir / "boilerplate").exists())
+            self.assertFalse((out_dir / "boilerplate" / "runtime-snapshots").exists())
+            self.assertTrue((out_dir / "boilerplate" / "schema-boilerplates" / "canonical_event_v1.json").exists())
+
+    def test_schema_order_is_used_when_export_fields_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            in_dir = root / "in"
+            out_dir = root / "out"
+            in_dir.mkdir(parents=True, exist_ok=True)
+
+            load_data_path = in_dir / "loadData_20307012.json"
+            load_data_path.write_text(
+                json.dumps([{"id": "1", "titel": "Event 1", "von": "18.02.2026"}], ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            schema_path = out_dir / "boilerplate" / "schema-boilerplates" / "custom.json"
+            schema_path.parent.mkdir(parents=True, exist_ok=True)
+            schema_path.write_text(
+                json.dumps(
+                    {
+                        "schema_id": "custom",
+                        "fields": [
+                            {"name": "title", "label": "TitelX"},
+                            {"name": "id", "label": "IDX"},
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = pipeline.deep_merge_dict(
+                pipeline.DEFAULT_CONFIG,
+                {
+                    "input": {"files": [str(load_data_path)]},
+                    "schema": {"enabled": True, "file": str(schema_path)},
+                    "export": {
+                        "output_dir": str(out_dir),
+                        "formats": ["csv"],
+                        "rows_per_file": {"enabled": False, "value": 1000},
+                        "fields": [],
+                        "field_mappings": {},
+                    },
+                },
+            )
+            pipeline.normalize_csv_options(cfg)
+            written = pipeline.run_pipeline(cfg, timestamp="20260218_150000")
+
+            self.assertEqual(len(written["csv"]), 1)
+            csv_file = out_dir / "loadData_20307012_csv_20260218_150000.csv"
+            self.assertTrue(csv_file.exists())
+            csv_lines = csv_file.read_text(encoding="utf-8").splitlines()
+            self.assertTrue(csv_lines)
+            self.assertEqual(csv_lines[0], "TitelX;IDX")
 
 
 if __name__ == "__main__":

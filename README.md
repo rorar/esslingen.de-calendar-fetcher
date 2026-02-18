@@ -6,7 +6,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
-- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten und erzeugt Boilerplate-JSON in `output/boilerplate/`).
+- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots und Schema-Boilerplate).
 - `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
 - `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
@@ -30,7 +30,7 @@ Label entsprechen z. B. den Kategorienamen wie bspw. `Begegnung` im Kalender-Fro
 **Netzwerk-Hinweis:**
 `--update-filters` und alle Download/Profile-Aufrufe (`--profile ...`) benötigen Internetzugriff auf `www.esslingen.de`.
 Die lokalen Processing-Schritte (`--preprocess` / `--postprocess`) funktionieren auch ohne Internet, sofern Eingaben vorhanden sind:
-Rohdaten in `structured-data/` oder Boilerplates in `output/boilerplate/`.
+Rohdaten in `structured-data/` oder Runtime-Snapshots in `output/boilerplate/runtime-snapshots/`.
 
 **Hinweis:** 
 Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
@@ -205,18 +205,23 @@ Die Pipeline kann in zwei Modi arbeiten:
 
 - `input.mode=raw`:
   - liest Rohdaten aus `structured-data/*.json`
-  - führt Normalisierung + Pre-Processing aus
-  - schreibt Boilerplate nach `output/boilerplate/`
+  - führt Normalisierung + Pre-Processing aus (kanonisches Datums-/Zeitformat)
+  - schreibt Runtime-Snapshots nach `output/boilerplate/runtime-snapshots/`
+  - erzeugt einmalig eine Schema-Boilerplate in `output/boilerplate/schema-boilerplates/`
   - erzeugt optional CSV/XML
 - `input.mode=boilerplate`:
-  - liest bereits bereinigte Datensätze aus `output/boilerplate/boilerplate_*.json`
+  - liest bereits bereinigte Datensätze aus `output/boilerplate/runtime-snapshots/boilerplate_*.json`
   - erzeugt CSV/XML ohne erneute Rohdaten-Normalisierung
 
 Voraussetzung bei `raw`:
 Die Eingabedateien in `structured-data/` müssen vorhanden sein (z. B. durch einen früheren Download-Lauf).
 
 Voraussetzung bei `boilerplate`:
-Es müssen Boilerplate-Dateien in `output/boilerplate/` (oder per Config/ENV gesetzt) vorhanden sein.
+Es müssen Runtime-Snapshot-Dateien in `output/boilerplate/runtime-snapshots/` (oder per Config/ENV gesetzt) vorhanden sein.
+
+Schema-Hinweis:
+Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerplate.
+`export.fields` und `export.field_mappings` in der Config sind damit optional und dienen als Override.
 
 ### Empfohlener 2-Phasen-Flow (echte Übergabe)
 
@@ -309,6 +314,9 @@ Wichtige Optionen in der Config:
   - `input.files` (Rohdaten-Dateien für `raw`)
   - `input.boilerplate_dir` (Quelle für `boilerplate_*.json`)
   - `input.boilerplate_files` (optionale explizite Dateiliste statt `boilerplate_dir`)
+- Schema:
+  - `schema.enabled`
+  - `schema.file` (leer = automatisch `output/boilerplate/schema-boilerplates/canonical_event_v1.json`)
 - Pre-Processing:
   - `preprocessing.text_fields`
   - `preprocessing.remove_line_breaks_and_tabs`
@@ -317,8 +325,8 @@ Wichtige Optionen in der Config:
   - `preprocessing.trim_whitespace`
 - Export:
   - `export.formats` (`csv`, `xml`)
-  - `export.field_mappings` (JSON-Label -> CSV-Spalte/XML-Tag)
-  - `export.fields` (zu exportierende Felder)
+  - `export.field_mappings` (optional: Override für Spalten-/Tag-Namen)
+  - `export.fields` (optional: Override für Feldauswahl/Reihenfolge)
   - `export.csv.delimiter`, `export.csv.quotechar`, `export.csv.escapechar`
   - `export.encoding`, `export.line_ending`
   - `export.date_output_format`
@@ -341,7 +349,10 @@ Dateinamen-Template:
 PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 main.py --postprocess
 
 # Post-Processing direkt aus Boilerplates
-PROCESS_INPUT_MODE=boilerplate PROCESS_BOILERPLATE_DIR=output/boilerplate python3 main.py --postprocess
+PROCESS_INPUT_MODE=boilerplate PROCESS_BOILERPLATE_DIR=output/boilerplate/runtime-snapshots python3 main.py --postprocess
+
+# Eigenes Schema-Boilerplate verwenden
+PROCESS_SCHEMA_FILE=output/boilerplate/schema-boilerplates/canonical_event_v1.json python3 main.py --postprocess
 
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
@@ -362,6 +373,8 @@ Unterstuetzte ENV-Keys:
   - `PROCESS_INPUT_FILES`
   - `PROCESS_BOILERPLATE_DIR`
   - `PROCESS_BOILERPLATE_FILES`
+  - `PROCESS_SCHEMA_ENABLED`
+  - `PROCESS_SCHEMA_FILE`
   - `PROCESS_TEXT_FIELDS`
   - `PROCESS_CLEAN_REMOVE_LINE_BREAKS`
   - `PROCESS_CLEAN_REMOVE_HTML_TAGS`
