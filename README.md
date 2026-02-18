@@ -83,7 +83,7 @@ python3 main.py --profile DOWNLOAD_SAMMEL_Frauenwochen
 ```
 
 ```bash
-python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+python3 main.py --profile 'DOWNLOAD_CAT_ID=908106,908119|908120'
 ```
 
 ```bash
@@ -138,7 +138,7 @@ python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskus
 6. ADVANCED Kategorien per IDs (mehrere Werte)
 
 ```bash
-python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+python3 main.py --profile 'DOWNLOAD_CAT_ID=908106,908119|908120'
 ```
 
 7. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
