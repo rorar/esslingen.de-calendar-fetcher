@@ -6,6 +6,10 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
+- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten und erzeugt Boilerplate-JSON in `output/boilerplate/`).
+- `app/postprocess_output.py`: Pre- + Post-Processing (CSV/XML Export in `output/`).
+- `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
+- `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
 - `requirements.txt`: keine externen Python-Abhängigkeiten erforderlich.
 
 ## Standardnutzung (empfohlen)
@@ -133,6 +137,98 @@ python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1
 python3 app/fetch_structured_data.py --series-id=-1 --anz=-1
 python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 ```
+
+## Verarbeitung und Export (Pre-/Post-Processing)
+
+Die Pipeline verarbeitet `loadData_20307012.json` und `jsonld_20307012_generated.json`,
+bereinigt Textfelder und erzeugt daraus Boilerplate-JSON sowie optional CSV/XML.
+
+### Nur Pre-Processing
+
+```bash
+python3 app/preprocess_data.py --config config/processing_config.json
+```
+
+### Pre- + Post-Processing (CSV/XML)
+
+```bash
+python3 app/postprocess_output.py --config config/processing_config.json
+```
+
+Alternativ direkt ueber die kombinierte Pipeline:
+
+```bash
+python3 app/process_data_pipeline.py --config config/processing_config.json
+```
+
+### Konfiguration
+
+Best-Practice Default:
+
+- `config/processing_config.json`
+
+Wichtige Optionen in der Config:
+
+- Pre-Processing:
+  - `preprocessing.text_fields`
+  - `preprocessing.remove_line_breaks_and_tabs`
+  - `preprocessing.remove_html_tags`
+  - `preprocessing.remove_html_entities`
+  - `preprocessing.trim_whitespace`
+- Export:
+  - `export.formats` (`csv`, `xml`)
+  - `export.field_mappings` (JSON-Label -> CSV-Spalte/XML-Tag)
+  - `export.fields` (zu exportierende Felder)
+  - `export.csv.delimiter`, `export.csv.quotechar`, `export.csv.escapechar`
+  - `export.encoding`, `export.line_ending`
+  - `export.date_output_format`
+  - `export.rows_per_file`
+  - `export.filename_template`
+  - `export.output_dir`
+
+### ENV-Overrides (Beispiele)
+
+```bash
+# Formate und Zielverzeichnis
+PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 app/postprocess_output.py
+
+# CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
+PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 app/postprocess_output.py
+
+# Feldauswahl und Mapping
+PROCESS_EXPORT_FIELDS='title,start_date,location_name' \
+PROCESS_EXPORT_FIELD_MAPPINGS='title:Titel,start_date:Startdatum,location_name:Ort' \
+python3 app/postprocess_output.py
+```
+
+Unterstuetzte ENV-Keys:
+
+- Input/Pre-Processing:
+  - `PROCESS_INPUT_FILES`
+  - `PROCESS_TEXT_FIELDS`
+  - `PROCESS_CLEAN_REMOVE_LINE_BREAKS`
+  - `PROCESS_CLEAN_REMOVE_HTML_TAGS`
+  - `PROCESS_CLEAN_REMOVE_HTML_ENTITIES`
+  - `PROCESS_CLEAN_TRIM_WHITESPACE`
+- Export:
+  - `PROCESS_EXPORT_FORMATS`
+  - `PROCESS_EXPORT_FIELDS`
+  - `PROCESS_EXPORT_FIELD_MAPPINGS`
+  - `PROCESS_CSV_DELIMITER`
+  - `PROCESS_CSV_QUOTECHAR`
+  - `PROCESS_CSV_ESCAPECHAR`
+  - `PROCESS_CSV_DOUBLEQUOTE`
+  - `PROCESS_CSV_QUOTING`
+  - `PROCESS_EXPORT_ENCODING`
+  - `PROCESS_DATE_OUTPUT_FORMAT`
+  - `PROCESS_LINE_ENDING`
+  - `PROCESS_ROWS_PER_FILE`
+  - `PROCESS_FILENAME_TEMPLATE`
+  - `PROCESS_FILENAME_CATEGORY`
+  - `PROCESS_OUTPUT_DIR`
+  - `PROCESS_XML_ROOT_TAG`
+  - `PROCESS_XML_ITEM_TAG`
+  - `PROCESS_XML_DECLARATION`
 
 ## Filter-Optionen aktualisieren
 

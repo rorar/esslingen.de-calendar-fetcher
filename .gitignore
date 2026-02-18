@@ -1,9 +1,11 @@
 PROMPT.md
+.ideas
 
 # generated data
 structured-data/
 filter/*.json
 *.ics
+output/
 
 # python artifacts
 __pycache__/

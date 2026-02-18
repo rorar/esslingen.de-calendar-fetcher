@@ -1,0 +1,92 @@
+{
+  "_notes": [
+    "Best-practice baseline config for app/process_data_pipeline.py",
+    "All settings can be overridden by environment variables (PROCESS_...)"
+  ],
+  "input": {
+    "files": [
+      "structured-data/loadData_20307012.json",
+      "structured-data/jsonld_20307012_generated.json"
+    ]
+  },
+  "preprocessing": {
+    "enabled": true,
+    "text_fields": [
+      "title",
+      "description",
+      "location_name",
+      "category",
+      "series",
+      "time",
+      "url"
+    ],
+    "remove_line_breaks_and_tabs": true,
+    "remove_html_tags": true,
+    "remove_html_entities": true,
+    "trim_whitespace": true
+  },
+  "export": {
+    "enabled": true,
+    "formats": [
+      "csv",
+      "xml"
+    ],
+    "output_dir": "output",
+    "encoding": "utf-8",
+    "line_ending": "\n",
+    "rows_per_file": 1000,
+    "filename_template": "{source}_{format}_{timestamp}_part{part}.{ext}",
+    "filename_context": {
+      "category": "calendar"
+    },
+    "date_input_formats": [
+      "%Y-%m-%d",
+      "%d.%m.%Y"
+    ],
+    "date_output_format": "%Y-%m-%d",
+    "fields": [
+      "id",
+      "title",
+      "start_date",
+      "end_date",
+      "time",
+      "description",
+      "location_name",
+      "location_postal_code",
+      "location_city",
+      "category",
+      "series",
+      "url",
+      "source_type",
+      "source_file"
+    ],
+    "field_mappings": {
+      "id": "ID",
+      "title": "Titel",
+      "start_date": "Startdatum",
+      "end_date": "Enddatum",
+      "time": "Uhrzeit",
+      "description": "Beschreibung",
+      "location_name": "Ort",
+      "location_postal_code": "PLZ",
+      "location_city": "Stadt",
+      "category": "Kategorie",
+      "series": "Sammelbegriff",
+      "url": "URL",
+      "source_type": "QuelleTyp",
+      "source_file": "QuelleDatei"
+    },
+    "csv": {
+      "delimiter": ";",
+      "quotechar": "\"",
+      "escapechar": "\\",
+      "quoting": "minimal",
+      "doublequote": false
+    },
+    "xml": {
+      "root_tag": "events",
+      "item_tag": "event",
+      "include_declaration": true
+    }
+  }
+}
