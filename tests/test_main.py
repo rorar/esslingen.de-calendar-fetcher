@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import main
 
@@ -101,6 +102,50 @@ class TestMainProfiles(unittest.TestCase):
         )
         self.assertEqual(cmd.count("--series-id"), 2)
         self.assertEqual(cmd.count("--cat-id"), 2)
+
+    def test_run_preprocess_uses_wrapper_script(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_preprocess("config/processing_config.json")
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "preprocess_data.py")
+        self.assertEqual(args, ["--config", "config/processing_config.json"])
+
+    def test_run_postprocess_uses_wrapper_script(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_postprocess("config/processing_config.json")
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "postprocess_output.py")
+        self.assertEqual(args, ["--config", "config/processing_config.json"])
+
+    def test_main_preprocess_only_does_not_run_download(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--preprocess"]),
+            patch("main.run_preprocess", return_value=0) as mocked_pre,
+            patch("main.run_download") as mocked_download,
+            patch("main.resolve_profile") as mocked_profile,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_pre.assert_called_once_with("config/processing_config.json")
+        mocked_download.assert_not_called()
+        mocked_profile.assert_not_called()
+
+    def test_main_profile_and_postprocess_runs_both(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--profile", "frauentage", "--postprocess", "--process-config", "x.json"]),
+            patch("main.resolve_profile", return_value={"series_ids": ["330100"], "anz": "-1", "cat_ids": []}) as mocked_profile,
+            patch("main.run_download", return_value=0) as mocked_download,
+            patch("main.run_postprocess", return_value=0) as mocked_post,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_profile.assert_called_once()
+        mocked_download.assert_called_once()
+        mocked_post.assert_called_once_with("x.json")
 
 
 if __name__ == "__main__":

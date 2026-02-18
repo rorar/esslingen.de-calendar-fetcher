@@ -92,6 +92,16 @@ def update_filters(filter_dir: Path) -> int:
     return run_python_script(script, ["--out-dir", str(filter_dir)])
 
 
+def run_preprocess(config_path: str) -> int:
+    script = Path(__file__).resolve().parent / "app" / "preprocess_data.py"
+    return run_python_script(script, ["--config", config_path])
+
+
+def run_postprocess(config_path: str) -> int:
+    script = Path(__file__).resolve().parent / "app" / "postprocess_output.py"
+    return run_python_script(script, ["--config", config_path])
+
+
 def load_filter_items(file_path: Path) -> list[dict[str, str]]:
     if not file_path.exists():
         raise FileNotFoundError(str(file_path))
@@ -300,27 +310,60 @@ def main() -> int:
         action="store_true",
         help="Refresh filter mappings via app/fetch_filter_options.py",
     )
+    parser.add_argument(
+        "--preprocess",
+        action="store_true",
+        help="Run preprocessing via app/preprocess_data.py",
+    )
+    parser.add_argument(
+        "--postprocess",
+        action="store_true",
+        help="Run postprocessing via app/postprocess_output.py",
+    )
+    parser.add_argument(
+        "--process-config",
+        default="config/processing_config.json",
+        help="Path to processing config for --preprocess/--postprocess",
+    )
     args = parser.parse_args()
 
     filter_dir = Path(args.filter_dir)
+    processing_requested = bool(args.preprocess or args.postprocess)
 
     if args.update_filters:
         rc = update_filters(filter_dir)
         if rc != 0:
             return rc
 
-    if args.profile is None:
-        if args.update_filters:
-            return 0
-        args.profile = "frauentage"
+    run_download_step = args.profile is not None or (not processing_requested and not args.update_filters)
+    if run_download_step:
+        if args.profile is None:
+            args.profile = "frauentage"
 
-    try:
-        config = resolve_profile(args.profile, filter_dir)
-    except Exception as exc:
-        print(str(exc))
-        return 1
+        try:
+            config = resolve_profile(args.profile, filter_dir)
+        except Exception as exc:
+            print(str(exc))
+            return 1
 
-    return run_download(config, args.out_dir)
+        rc = run_download(config, args.out_dir)
+        if rc != 0:
+            return rc
+
+    if args.preprocess:
+        rc = run_preprocess(args.process_config)
+        if rc != 0:
+            return rc
+
+    if args.postprocess:
+        rc = run_postprocess(args.process_config)
+        if rc != 0:
+            return rc
+
+    if args.update_filters and args.profile is None and not processing_requested:
+        return 0
+
+    return 0
 
 
 if __name__ == "__main__":

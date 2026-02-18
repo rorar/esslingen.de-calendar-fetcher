@@ -22,7 +22,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 python3 main.py --update-filters
 ```
 
-Warum zuerst?
+**Warum zuerst?**
 Damit Label- und ID-Mappings aktuell sind und du das Programm korrekt konfigurieren kannst.
 
 Label entsprechen z. B. den Kategorienamen wie bspw. `Begegnung` im Kalender-Frontend, IDs sind die korrespondierenden internen Werte für API-Parameter.
@@ -45,21 +45,21 @@ python3 main.py --profile frauentage --out-dir structured-data
 
 ## Profile in `main.py`
 
-Hardcoded Profile:
+### Hardcoded Profile:
 
 - `DOWNLOAD_EVERY_DATE`
   - entspricht: `--series-id=-1 --anz=-1`
 - `DOWNLOAD_FRAUENTAGE`
   - entspricht: `--series-id=330100 --anz=-1`
 
-Simple-Filter:
+### Simple-Filter:
 
 - `DOWNLOAD_CAT_<ID|LABEL>`
   - setzt genau einen Kategorie-Filter (`q.kat.id`) und lädt mit `--series-id=-1 --anz=-1`
 - `DOWNLOAD_SAMMEL_<ID|LABEL>`
   - setzt genau einen Sammelbegriff-Filter (`q.sammelbegrif.id`) und lädt mit `--anz=-1`
 
-Advanced-Filter (Multi-Werte):
+### Advanced-Filter (Multi-Werte):
 
 - `DOWNLOAD_CAT_ID=<ID[,ID2...]>`
 - `DOWNLOAD_CAT_LABEL=<LABEL[,LABEL2...]>`
@@ -68,7 +68,7 @@ Advanced-Filter (Multi-Werte):
 
 Unterstützte Delimiter für Multi-Werte: `,` `;` `|` `+`
 
-Beispiele:
+### Beispiele:
 
 ```bash
 python3 main.py --profile DOWNLOAD_CAT_908119
@@ -98,36 +98,58 @@ python3 main.py --profile 'DOWNLOAD_SAMMEL_ID=330100|11602300'
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
 ```
 
-Hinweise zur Label-Auflösung:
+### Hinweise zur Label-Auflösung:
 
 - Für ADVANCED-Label werden Varianten wie `Bühne · Theater` und `Bühne Theater` gleich behandelt.
 - Für SIMPLE-Label werden normalisierte Schreibweisen wie `BÜHNE_THEATER` akzeptiert.
 
 ## Copy/Paste Profile
 
+1. Filter-Listen aktualisieren
+
 ```bash
-# 1) Filter-Listen aktualisieren
 python3 main.py --update-filters
+```
 
-# 2) Alle Termine (Default-Kalender)
+2. Alle Termine (Default-Kalender)
+
+```bash
 python3 main.py --profile DOWNLOAD_EVERY_DATE
+```
 
-# 3) Nur Frauenwochen
+3. Nur Frauenwochen
+
+```bash
 python3 main.py --profile DOWNLOAD_FRAUENTAGE
+```
 
-# 4) SIMPLE Kategorie per normalisiertem Label
+4. SIMPLE Kategorie per normalisiertem Label
+
+```bash
 python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
+```
 
-# 5) ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
+5. ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
+
+```bash
 python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
+```
 
-# 6) ADVANCED Kategorien per IDs (mehrere Werte)
+6. ADVANCED Kategorien per IDs (mehrere Werte)
+
+```bash
 python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+```
 
-# 7) ADVANCED Sammelbegriffe per Labels (mehrere Werte)
+7. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
+
+```bash
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
+```
 
-# 8) Kombination Serie + Kategorie (Direktaufruf des Fetchers)
+8. Kombination Serie + Kategorie (Direktaufruf des Fetchers)
+
+```bash
 python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1
 ```
 
@@ -146,13 +168,25 @@ bereinigt Textfelder und erzeugt daraus Boilerplate-JSON sowie optional CSV/XML.
 ### Nur Pre-Processing
 
 ```bash
-python3 app/preprocess_data.py --config config/processing_config.json
+python3 main.py --preprocess
 ```
 
 ### Pre- + Post-Processing (CSV/XML)
 
 ```bash
-python3 app/postprocess_output.py --config config/processing_config.json
+python3 main.py --postprocess
+```
+
+Kombiniert mit Download in einem Lauf:
+
+```bash
+python3 main.py --profile frauentage --postprocess
+```
+
+Eigene Config-Datei:
+
+```bash
+python3 main.py --postprocess --process-config config/processing_config.json
 ```
 
 Alternativ direkt ueber die kombinierte Pipeline:
@@ -198,18 +232,18 @@ Dateinamen-Template:
 
 ```bash
 # Formate und Zielverzeichnis
-PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 app/postprocess_output.py
+PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 main.py --postprocess
 
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
-PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 app/postprocess_output.py
+PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
 
 # Dateisplitting deaktivieren (rows_per_file.value wird ignoriert)
-PROCESS_ROWS_PER_FILE_ENABLED=false python3 app/postprocess_output.py
+PROCESS_ROWS_PER_FILE_ENABLED=false python3 main.py --postprocess
 
 # Feldauswahl und Mapping
 PROCESS_EXPORT_FIELDS='title,start_date,location_name' \
 PROCESS_EXPORT_FIELD_MAPPINGS='title:Titel,start_date:Startdatum,location_name:Ort' \
-python3 app/postprocess_output.py
+python3 main.py --postprocess
 ```
 
 Unterstuetzte ENV-Keys:
