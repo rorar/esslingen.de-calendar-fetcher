@@ -415,13 +415,17 @@ def extract_time_from_datetime(value: Any) -> str:
     if not text:
         return ""
 
+    # Date-only values (e.g. 2026-03-08) must stay time-empty.
+    if not re.search(r"[T ]\d{1,2}:\d{2}", text):
+        return ""
+
+    time_match = re.search(r"[T ](\d{1,2}):(\d{2})", text)
     try:
         dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
         return dt.strftime("%H:%M")
     except ValueError:
-        match = re.search(r"T(\d{2}):(\d{2})", text)
-        if match:
-            return f"{match.group(1)}:{match.group(2)}"
+        if time_match:
+            return f"{int(time_match.group(1)):02d}:{time_match.group(2)}"
         return ""
 
 

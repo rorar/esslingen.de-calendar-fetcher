@@ -20,6 +20,11 @@ class TestProcessDataPipeline(unittest.TestCase):
         cleaned = pipeline.clean_text(raw, cfg)
         self.assertEqual(cleaned, "Hallo Welt & Freunde")
 
+    def test_extract_time_from_datetime_keeps_date_only_empty(self) -> None:
+        self.assertEqual(pipeline.extract_time_from_datetime("2026-03-08"), "")
+        self.assertEqual(pipeline.extract_time_from_datetime("2026-03-08T09:05:00"), "09:05")
+        self.assertEqual(pipeline.extract_time_from_datetime("2026-03-08T09:05:00+01:00"), "09:05")
+
     def test_env_overrides_for_formats_and_csv_options(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         with patch.dict(
@@ -184,6 +189,13 @@ class TestProcessDataPipeline(unittest.TestCase):
             xml_text = xml_file.read_text(encoding="utf-8")
             self.assertIn("<events>", xml_text)
             self.assertIn("<Titel>JSONLD Event</Titel>", xml_text)
+
+            jsonld_boilerplate_file = (
+                out_dir / "boilerplate" / "runtime-snapshots" / "boilerplate_jsonld_20307012_generated.json"
+            )
+            self.assertTrue(jsonld_boilerplate_file.exists())
+            jsonld_payload = json.loads(jsonld_boilerplate_file.read_text(encoding="utf-8"))
+            self.assertEqual(jsonld_payload["records"][0]["time"], "")
 
     def test_run_pipeline_without_split_ignores_rows_value_and_omits_part_token(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
