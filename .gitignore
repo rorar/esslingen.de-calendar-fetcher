@@ -1,3 +1,13 @@
 PROMPT.md
-structured-data/*
-*.json
+
+# generated data
+structured-data/
+filter/*.json
+*.ics
+
+# python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/

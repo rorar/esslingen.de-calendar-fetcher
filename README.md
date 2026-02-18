@@ -17,6 +17,12 @@ python3 main.py --profile every_date
 python3 main.py --profile frauentage
 ```
 
+Filter-Mappings über `main.py` aktualisieren:
+
+```bash
+python3 main.py --update-filters
+```
+
 Optional anderes Ausgabeverzeichnis:
 
 ```bash
@@ -25,10 +31,74 @@ python3 main.py --profile frauentage --out-dir structured-data
 
 ## Profile in `main.py`
 
+Hardcoded (bleiben erhalten):
+
 - `DOWNLOAD_EVERY_DATE`
   - entspricht: `--series-id=-1 --anz=-1`
 - `DOWNLOAD_FRAUENTAGE`
   - entspricht: `--series-id=330100 --anz=-1`
+
+Simple-Filter:
+
+- `DOWNLOAD_CAT_<ID|LABEL>`
+  - setzt genau einen Kategorie-Filter (`q.kat.id`) und lädt mit `--series-id=-1 --anz=-1`
+- `DOWNLOAD_SAMMEL_<ID|LABEL>`
+  - setzt genau einen Sammelbegriff-Filter (`q.sammelbegrif.id`) und lädt mit `--anz=-1`
+
+Advanced-Filter (Multi-Werte):
+
+- `DOWNLOAD_CAT_ID=<ID[,ID2...]>`
+- `DOWNLOAD_CAT_LABEL=<LABEL[,LABEL2...]>`
+- `DOWNLOAD_SAMMEL_ID=<ID[,ID2...]>`
+- `DOWNLOAD_SAMMEL_LABEL=<LABEL[,LABEL2...]>`
+
+Unterstützte Delimiter für Multi-Werte: `,` `;` `|` `+`
+
+Beispiele:
+
+```bash
+python3 main.py --profile DOWNLOAD_CAT_908119
+python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
+python3 main.py --profile DOWNLOAD_SAMMEL_Frauenwochen
+
+python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
+python3 main.py --profile 'DOWNLOAD_SAMMEL_ID=330100|11602300'
+python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
+```
+
+Hinweise zur Label-Auflösung:
+
+- Für ADVANCED-Label werden Varianten wie `Bühne · Theater` und `Bühne Theater` gleich behandelt.
+- Für SIMPLE-Label werden normalisierte Schreibweisen wie `BÜHNE_THEATER` akzeptiert.
+
+## Copy/Paste Profile
+
+```bash
+# 1) Filter-Listen aktualisieren
+python3 main.py --update-filters
+
+# 2) Alle Termine (Default-Kalender)
+python3 main.py --profile DOWNLOAD_EVERY_DATE
+
+# 3) Nur Frauenwochen
+python3 main.py --profile DOWNLOAD_FRAUENTAGE
+
+# 4) SIMPLE Kategorie per normalisiertem Label
+python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
+
+# 5) ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
+python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
+
+# 6) ADVANCED Kategorien per IDs (mehrere Werte)
+python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+
+# 7) ADVANCED Sammelbegriffe per Labels (mehrere Werte)
+python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
+
+# 8) Kombination Serie + Kategorie (Direktaufruf des Fetchers)
+python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908121 --anz=-1
+```
 
 ## Advanced: Direkter Scriptaufruf
 
@@ -36,6 +106,26 @@ python3 main.py --profile frauentage --out-dir structured-data
 python3 app/fetch_structured_data.py --series-id=-1 --anz=-1
 python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 ```
+
+## Filter-Optionen aktualisieren
+
+Über `main.py`:
+
+```bash
+python3 main.py --update-filters
+```
+
+Oder direkt über das Skript:
+
+```bash
+python3 app/fetch_filter_options.py
+```
+
+Output-Dateien:
+
+- `filter/q.sammelbegrif.id.json`
+- `filter/q.kat.id.json`
+
 
 ## Output und Versionierung
 

@@ -9,6 +9,7 @@ import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -132,6 +133,75 @@ def write_history_snapshot(paths: list[Path], history_dir: Path) -> None:
         shutil.copy2(path, history_dir / history_name)
 
 
+def build_json_url(series_id: str, anz: str, cat_ids: list[str] | None = None, ldx: str | None = None) -> str:
+    if ldx is None:
+        ldx = str(int(time.time() * 1000))
+
+    params: list[tuple[str, str]] = [
+        ("ldx", ldx),
+        ("action", "pre"),
+        ("q.z.von", ""),
+        ("q.z.bis", ""),
+        ("q.sammelbegrif.id", str(series_id)),
+        ("q", ""),
+        ("rezw", "1200"),
+        ("SORT", "2"),
+        ("dateformat", "XDATE"),
+        ("anz", str(anz)),
+        ("loadgruppe", "geg"),
+        ("loadgruppe", "dhhd"),
+        ("loadgruppe", "kkfjfj"),
+        ("xstart", "0"),
+    ]
+
+    for cat_id in cat_ids or []:
+        cat_id = str(cat_id).strip()
+        if cat_id:
+            params.append(("q.kat.id", cat_id))
+
+    return f"{JSON_BASE_URL}?{urlencode(params, doseq=True)}"
+
+
+def unique_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
+
+
+def event_dedupe_key(event: dict[str, Any]) -> str:
+    event_id = str(event.get("id", "")).strip()
+    if event_id:
+        return f"id:{event_id}"
+
+    title = str(event.get("titel", "")).strip()
+    von = str(event.get("von", "")).strip()
+    bis = str(event.get("bis", "")).strip()
+    zeit = str(event.get("zeit", "")).strip()
+    location = str(event.get("location", "")).strip()
+    return f"fallback:{title}|{von}|{bis}|{zeit}|{location}"
+
+
+def merge_event_lists(event_lists: list[list[object]]) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    for events in event_lists:
+        for item in events:
+            if not isinstance(item, dict):
+                continue
+            key = event_dedupe_key(item)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            merged.append(item)
+
+    return merged
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch structured Esslingen calendar data into ./structured-data")
     parser.add_argument(
@@ -141,13 +211,23 @@ def main() -> int:
     )
     parser.add_argument(
         "--series-id",
-        default="-1",
-        help="Value for q.sammelbegrif.id (-1 means all series, 330100 = Frauenwochen)",
+        action="append",
+        default=[],
+        help=(
+            "Value for q.sammelbegrif.id (-1 means all series, 330100 = Frauenwochen). "
+            "Can be used multiple times."
+        ),
     )
     parser.add_argument(
         "--anz",
         default="-1",
         help="Value for anz parameter (-1 means load all available items)",
+    )
+    parser.add_argument(
+        "--cat-id",
+        action="append",
+        default=[],
+        help="Optional q.kat.id filter. Can be used multiple times.",
     )
     args = parser.parse_args()
 
@@ -155,43 +235,39 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     history_dir = out_dir / "history"
 
-    ldx = str(int(time.time() * 1000))
-    json_params = [
-        ("ldx", ldx),
-        ("action", "pre"),
-        ("q.z.von", ""),
-        ("q.z.bis", ""),
-        ("q.sammelbegrif.id", str(args.series_id)),
-        ("q", ""),
-        ("rezw", "1200"),
-        ("SORT", "2"),
-        ("dateformat", "XDATE"),
-        ("anz", str(args.anz)),
-        ("loadgruppe", "geg"),
-        ("loadgruppe", "dhhd"),
-        ("loadgruppe", "kkfjfj"),
-        ("xstart", "0"),
-    ]
-    json_url = f"{JSON_BASE_URL}?{urlencode(json_params, doseq=True)}"
+    series_ids = [str(x).strip() for x in args.series_id if str(x).strip()]
+    if not series_ids:
+        series_ids = ["-1"]
+    if "-1" in series_ids:
+        series_ids = ["-1"]
+    series_ids = unique_preserve_order(series_ids)
+
+    cat_ids = unique_preserve_order([str(x).strip() for x in args.cat_id if str(x).strip()])
 
     try:
-        json_text = fetch_text(json_url)
+        all_events: list[list[object]] = []
+        for series_id in series_ids:
+            json_url = build_json_url(series_id, args.anz, cat_ids=cat_ids)
+            json_text = fetch_text(json_url)
+            parsed = json.loads(json_text)
+            if not isinstance(parsed, list):
+                raise ValueError("Unexpected JSON structure: expected a list")
+            all_events.append(parsed)
+
+        merged_events = merge_event_lists(all_events)
+        merged_json_text = json.dumps(merged_events, ensure_ascii=False, indent=2)
         ics_text = fetch_text(ICS_URL)
     except RuntimeError as exc:
         print(str(exc))
         return 1
 
     json_path = out_dir / "loadData_20307012.json"
-    json_path.write_text(json_text, encoding="utf-8")
+    json_path.write_text(merged_json_text, encoding="utf-8")
 
     ics_path = out_dir / "ical_20307012.ics"
     ics_path.write_text(ics_text, encoding="utf-8")
 
-    data = json.loads(json_text)
-    if not isinstance(data, list):
-        raise ValueError("Unexpected JSON structure: expected a list")
-
-    jsonld = to_jsonld(data)
+    jsonld = to_jsonld(merged_events)
     jsonld_path = out_dir / "jsonld_20307012_generated.json"
     jsonld_path.write_text(json.dumps(jsonld, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -201,6 +277,9 @@ def main() -> int:
         print("Download backend: curl")
     else:
         print("Download backend: urllib fallback (curl nicht gefunden)")
+    print(f"Series IDs: {', '.join(series_ids)}")
+    if cat_ids:
+        print(f"Category IDs: {', '.join(cat_ids)}")
     print(f"Wrote {json_path}")
     print(f"Wrote {ics_path}")
     print(f"Wrote {jsonld_path} ({len(jsonld)} events)")
