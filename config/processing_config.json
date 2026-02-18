@@ -34,8 +34,11 @@
     "output_dir": "output",
     "encoding": "utf-8",
     "line_ending": "\n",
-    "rows_per_file": 1000,
-    "filename_template": "{source}_{format}_{timestamp}_part{part}.{ext}",
+    "rows_per_file": {
+      "enabled": true,
+      "value": 1000
+    },
+    "filename_template": "{source}_{format}_{timestamp}{_part{part}}.{ext}",
     "filename_context": {
       "category": "calendar"
     },

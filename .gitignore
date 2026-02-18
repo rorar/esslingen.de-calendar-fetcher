@@ -5,6 +5,8 @@ PROMPT.md
 structured-data/
 filter/*.json
 *.ics
+*.csv
+*.xml
 output/
 
 # python artifacts

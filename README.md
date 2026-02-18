@@ -182,9 +182,17 @@ Wichtige Optionen in der Config:
   - `export.csv.delimiter`, `export.csv.quotechar`, `export.csv.escapechar`
   - `export.encoding`, `export.line_ending`
   - `export.date_output_format`
-  - `export.rows_per_file`
+  - `export.rows_per_file.enabled` (Chunking ein/aus)
+  - `export.rows_per_file.value` (Zeilen pro Datei, nur relevant wenn enabled=true)
   - `export.filename_template`
   - `export.output_dir`
+
+Dateinamen-Template:
+
+- Empfohlen: `"{source}_{format}_{timestamp}{_part{part}}.{ext}"`
+- Bedeutung:
+  - Bei `rows_per_file.enabled=true` wird `{_part{part}}` zu z. B. `_part1`.
+  - Bei `rows_per_file.enabled=false` wird der Block komplett entfernt.
 
 ### ENV-Overrides (Beispiele)
 
@@ -194,6 +202,9 @@ PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 app/postprocess
 
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 app/postprocess_output.py
+
+# Dateisplitting deaktivieren (rows_per_file.value wird ignoriert)
+PROCESS_ROWS_PER_FILE_ENABLED=false python3 app/postprocess_output.py
 
 # Feldauswahl und Mapping
 PROCESS_EXPORT_FIELDS='title,start_date,location_name' \
@@ -223,6 +234,7 @@ Unterstuetzte ENV-Keys:
   - `PROCESS_DATE_OUTPUT_FORMAT`
   - `PROCESS_LINE_ENDING`
   - `PROCESS_ROWS_PER_FILE`
+  - `PROCESS_ROWS_PER_FILE_ENABLED`
   - `PROCESS_FILENAME_TEMPLATE`
   - `PROCESS_FILENAME_CATEGORY`
   - `PROCESS_OUTPUT_DIR`

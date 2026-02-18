@@ -42,8 +42,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "output_dir": "output",
         "encoding": "utf-8",
         "line_ending": "\n",
-        "rows_per_file": 1000,
-        "filename_template": "{source}_{format}_{timestamp}_part{part}.{ext}",
+        "rows_per_file": {"enabled": True, "value": 1000},
+        "filename_template": "{source}_{format}_{timestamp}{_part{part}}.{ext}",
         "filename_context": {},
         "date_input_formats": ["%Y-%m-%d", "%d.%m.%Y"],
         "date_output_format": "%Y-%m-%d",
@@ -119,6 +119,28 @@ def parse_bool(value: str) -> bool:
     raise ValueError(f"Ungueltiger boolescher Wert: {value}")
 
 
+def ensure_rows_per_file_config(export_cfg: dict[str, Any]) -> None:
+    rows_cfg = export_cfg.get("rows_per_file")
+
+    if isinstance(rows_cfg, dict):
+        enabled_raw = rows_cfg.get("enabled", True)
+        value_raw = rows_cfg.get("value", 1000)
+    else:
+        enabled_raw = True
+        value_raw = rows_cfg if rows_cfg is not None else 1000
+
+    if isinstance(enabled_raw, str):
+        enabled = parse_bool(enabled_raw)
+    else:
+        enabled = bool(enabled_raw)
+
+    value = int(value_raw)
+    if enabled and value <= 0:
+        raise ValueError("rows_per_file.value muss > 0 sein, wenn rows_per_file.enabled=true")
+
+    export_cfg["rows_per_file"] = {"enabled": enabled, "value": value}
+
+
 def parse_list(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
@@ -178,6 +200,7 @@ def normalize_csv_options(config: dict[str, Any]) -> None:
 def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     updated = deepcopy(config)
     env = os.environ
+    ensure_rows_per_file_config(updated["export"])
 
     if value := env.get("PROCESS_INPUT_FILES"):
         updated["input"]["files"] = parse_list(value)
@@ -216,7 +239,9 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     if value := env.get("PROCESS_LINE_ENDING"):
         updated["export"]["line_ending"] = value
     if value := env.get("PROCESS_ROWS_PER_FILE"):
-        updated["export"]["rows_per_file"] = int(value)
+        updated["export"]["rows_per_file"]["value"] = int(value)
+    if value := env.get("PROCESS_ROWS_PER_FILE_ENABLED"):
+        updated["export"]["rows_per_file"]["enabled"] = parse_bool(value)
     if value := env.get("PROCESS_FILENAME_TEMPLATE"):
         updated["export"]["filename_template"] = value
     if value := env.get("PROCESS_OUTPUT_DIR"):
@@ -230,6 +255,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     if value := env.get("PROCESS_FILENAME_CATEGORY"):
         updated["export"]["filename_context"]["category"] = value
 
+    ensure_rows_per_file_config(updated["export"])
     updated["export"]["line_ending"] = decode_escapes(str(updated["export"]["line_ending"]))
     normalize_csv_options(updated)
     return updated
@@ -243,6 +269,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         raise ValueError("Konfiguration muss ein JSON-Objekt sein")
 
     merged = deep_merge_dict(DEFAULT_CONFIG, user_config)
+    ensure_rows_per_file_config(merged["export"])
     return apply_env_overrides(merged)
 
 
@@ -407,14 +434,22 @@ def chunk_rows(rows: list[list[str]], rows_per_file: int) -> list[list[list[str]
     return [rows[idx : idx + rows_per_file] for idx in range(0, len(rows), rows_per_file)]
 
 
-def make_filename(source: str, fmt: str, part: int, config: dict[str, Any], timestamp: str) -> str:
+def make_filename(
+    source: str,
+    fmt: str,
+    part: int,
+    config: dict[str, Any],
+    timestamp: str,
+    include_part: bool,
+) -> str:
     template = str(config["export"]["filename_template"])
+    template = template.replace("{_part{part}}", "_part{part}" if include_part else "")
     context = SafeFormatDict(
         {
             **config["export"].get("filename_context", {}),
             "source": source,
             "format": fmt,
-            "part": part,
+            "part": part if include_part else "",
             "timestamp": timestamp,
             "ext": fmt,
         }
@@ -517,7 +552,10 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
     output_dir.mkdir(parents=True, exist_ok=True)
     encoding = str(config["export"]["encoding"])
     line_ending = str(config["export"]["line_ending"])
-    rows_per_file = int(config["export"]["rows_per_file"])
+    ensure_rows_per_file_config(config["export"])
+    rows_cfg: dict[str, Any] = config["export"]["rows_per_file"]
+    rows_split_enabled = bool(rows_cfg.get("enabled", True))
+    rows_per_file = int(rows_cfg.get("value", 1000))
     timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
 
     written: dict[str, list[Path]] = {"boilerplate": [], "csv": [], "xml": []}
@@ -535,11 +573,18 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
 
         formats = [str(fmt).lower() for fmt in config["export"]["formats"]]
         headers, raw_rows = build_export_rows(records, config)
-        chunks = chunk_rows(raw_rows, rows_per_file)
+        chunks = chunk_rows(raw_rows, rows_per_file) if rows_split_enabled else [raw_rows]
 
         for part_idx, chunk in enumerate(chunks, start=1):
             for fmt in formats:
-                filename = make_filename(source_name, fmt, part_idx, config, timestamp)
+                filename = make_filename(
+                    source_name,
+                    fmt,
+                    part_idx,
+                    config,
+                    timestamp,
+                    include_part=rows_split_enabled,
+                )
                 out_path = output_dir / filename
                 if fmt == "csv":
                     export_csv(

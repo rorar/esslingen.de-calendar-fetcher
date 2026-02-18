@@ -37,7 +37,23 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(updated["export"]["formats"], ["xml", "csv"])
         self.assertEqual(updated["export"]["csv"]["delimiter"], "\t")
         self.assertEqual(updated["export"]["line_ending"], "\r\n")
-        self.assertEqual(updated["export"]["rows_per_file"], 25)
+        self.assertTrue(updated["export"]["rows_per_file"]["enabled"])
+        self.assertEqual(updated["export"]["rows_per_file"]["value"], 25)
+
+    def test_env_override_rows_per_file_enabled_false(self) -> None:
+        base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        with patch.dict(
+            os.environ,
+            {
+                "PROCESS_ROWS_PER_FILE_ENABLED": "false",
+                "PROCESS_ROWS_PER_FILE": "1",
+            },
+            clear=False,
+        ):
+            updated = pipeline.apply_env_overrides(base)
+
+        self.assertFalse(updated["export"]["rows_per_file"]["enabled"])
+        self.assertEqual(updated["export"]["rows_per_file"]["value"], 1)
 
     def test_env_override_escapechar_doublequote_mode(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
@@ -118,9 +134,9 @@ class TestProcessDataPipeline(unittest.TestCase):
                     "input": {"files": [str(load_data_path), str(jsonld_path)]},
                     "export": {
                         "output_dir": str(out_dir),
-                        "rows_per_file": 1,
+                        "rows_per_file": {"enabled": True, "value": 1},
                         "formats": ["csv", "xml"],
-                        "filename_template": "{source}_{format}_part{part}.{ext}",
+                        "filename_template": "{source}_{format}{_part{part}}.{ext}",
                     },
                 },
             )
@@ -149,6 +165,48 @@ class TestProcessDataPipeline(unittest.TestCase):
             xml_text = xml_file.read_text(encoding="utf-8")
             self.assertIn("<events>", xml_text)
             self.assertIn("<Titel>JSONLD Event</Titel>", xml_text)
+
+    def test_run_pipeline_without_split_ignores_rows_value_and_omits_part_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            in_dir = root / "in"
+            out_dir = root / "out"
+            in_dir.mkdir(parents=True, exist_ok=True)
+
+            load_data_path = in_dir / "loadData_20307012.json"
+            load_data_path.write_text(
+                json.dumps(
+                    [
+                        {"id": "1", "titel": "Event 1", "von": "18.02.2026"},
+                        {"id": "2", "titel": "Event 2", "von": "19.02.2026"},
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = pipeline.deep_merge_dict(
+                pipeline.DEFAULT_CONFIG,
+                {
+                    "input": {"files": [str(load_data_path)]},
+                    "export": {
+                        "output_dir": str(out_dir),
+                        "formats": ["csv"],
+                        "rows_per_file": {"enabled": False, "value": 1},
+                        "filename_template": "{source}_{format}_{timestamp}{_part{part}}.{ext}",
+                    },
+                },
+            )
+            pipeline.normalize_csv_options(cfg)
+            written = pipeline.run_pipeline(cfg, timestamp="20260218_130000")
+
+            self.assertEqual(len(written["csv"]), 1)
+            expected = out_dir / "loadData_20307012_csv_20260218_130000.csv"
+            self.assertTrue(expected.exists())
+            self.assertNotIn("_part", expected.name)
+            csv_text = expected.read_text(encoding="utf-8")
+            self.assertIn("Event 1", csv_text)
+            self.assertIn("Event 2", csv_text)
 
 
 if __name__ == "__main__":
