@@ -157,6 +157,30 @@ python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Re
 python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1
 ```
 
+9. Nur Pre-Processing über `main.py`
+
+```bash
+python3 main.py --preprocess
+```
+
+10. Nur Post-Processing über `main.py`
+
+```bash
+python3 main.py --postprocess
+```
+
+11. Post-Processing mit eigener Config über `main.py`
+
+```bash
+python3 main.py --postprocess --process-config config/processing_config.json
+```
+
+12. Download + Post-Processing in einem Lauf
+
+```bash
+python3 main.py --profile frauentage --postprocess
+```
+
 ## Advanced: Direkter Scriptaufruf
 
 ```bash
