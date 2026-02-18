@@ -27,6 +27,10 @@ Damit Label- und ID-Mappings aktuell sind und du das Programm korrekt konfigurie
 
 Label entsprechen z. B. den Kategorienamen wie bspw. `Begegnung` im Kalender-Frontend, IDs sind die korrespondierenden internen Werte für API-Parameter.
 
+**Netzwerk-Hinweis:**
+`--update-filters` und alle Download/Profile-Aufrufe (`--profile ...`) benötigen Internetzugriff auf `www.esslingen.de`.
+Die lokalen Processing-Schritte (`--preprocess` / `--postprocess`) funktionieren auch ohne Internet, sofern in `structured-data/` bereits Eingabedateien vorhanden sind.
+
 **Hinweis:** 
 Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
 
@@ -165,28 +169,53 @@ python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 Die Pipeline verarbeitet `loadData_20307012.json` und `jsonld_20307012_generated.json`,
 bereinigt Textfelder und erzeugt daraus Boilerplate-JSON sowie optional CSV/XML.
 
+Voraussetzung:
+Die Eingabedateien in `structured-data/` müssen bereits vorhanden sein (z. B. durch einen früheren Download-Lauf).
+
 ### Nur Pre-Processing
+
+Ueber `main.py` (empfohlen):
 
 ```bash
 python3 main.py --preprocess
 ```
 
+Mit eigener Config:
+
+```bash
+python3 main.py --preprocess --process-config config/processing_config.json
+```
+
+Direktes Skript:
+
+```bash
+python3 app/preprocess_data.py --config config/processing_config.json
+```
+
 ### Pre- + Post-Processing (CSV/XML)
+
+Ueber `main.py` (empfohlen):
 
 ```bash
 python3 main.py --postprocess
 ```
 
-Kombiniert mit Download in einem Lauf:
+Mit eigener Config:
+
+```bash
+python3 main.py --postprocess --process-config config/processing_config.json
+```
+
+Kombiniert mit Download in einem Lauf (Download + Post-Processing):
 
 ```bash
 python3 main.py --profile frauentage --postprocess
 ```
 
-Eigene Config-Datei:
+Direktes Skript:
 
 ```bash
-python3 main.py --postprocess --process-config config/processing_config.json
+python3 app/postprocess_output.py --config config/processing_config.json
 ```
 
 Alternativ direkt ueber die kombinierte Pipeline:
