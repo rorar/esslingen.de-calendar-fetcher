@@ -97,7 +97,7 @@ python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
 
 # 8) Kombination Serie + Kategorie (Direktaufruf des Fetchers)
-python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908121 --anz=-1
+python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1
 ```
 
 ## Advanced: Direkter Scriptaufruf
