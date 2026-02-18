@@ -27,6 +27,10 @@
   },
   "export": {
     "enabled": true,
+    "_notes_formats": [
+      "Currently only supports CSV and XML export, but can be extended to other formats (e.g. JSON, Excel, etc.)",
+      "The export format(s) can be configured via the 'formats' setting, which can be overridden by the PROCESS_FORMATS environment variable (comma-separated list, e.g. 'csv,xml')"
+    ],
     "formats": [
       "csv",
       "xml"
@@ -35,7 +39,7 @@
     "encoding": "utf-8",
     "line_ending": "\n",
     "rows_per_file": {
-      "enabled": true,
+      "enabled": false,
       "value": 1000
     },
     "filename_template": "{source}_{format}_{timestamp}{_part{part}}.{ext}",
