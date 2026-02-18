@@ -6,7 +6,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
-- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots und Schema-Boilerplate).
+- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots, kanonische Schema-Boilerplate und source-nahe Schema-Boilerplates).
 - `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
 - `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
@@ -208,6 +208,7 @@ Die Pipeline kann in zwei Modi arbeiten:
   - führt Normalisierung + Pre-Processing aus (kanonisches Datums-/Zeitformat)
   - schreibt Runtime-Snapshots nach `output/boilerplate/runtime-snapshots/`
   - erzeugt einmalig eine Schema-Boilerplate in `output/boilerplate/schema-boilerplates/`
+  - erzeugt pro Eingangsdatei source-nahe Schema-Boilerplates (`source_<datei>.json`)
   - erzeugt optional CSV/XML
 - `input.mode=boilerplate`:
   - liest bereits bereinigte Datensätze aus `output/boilerplate/runtime-snapshots/boilerplate_*.json`
@@ -222,6 +223,7 @@ Es müssen Runtime-Snapshot-Dateien in `output/boilerplate/runtime-snapshots/` (
 Schema-Hinweis:
 Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerplate.
 `export.fields` und `export.field_mappings` in der Config sind damit optional und dienen als Override.
+Die source-nahen Schema-Boilerplates entsprechen den Feldern der Eingangsdateien und können als Bearbeitungsgrundlage dienen.
 
 ### Empfohlener 2-Phasen-Flow (echte Übergabe)
 
@@ -317,6 +319,8 @@ Wichtige Optionen in der Config:
 - Schema:
   - `schema.enabled`
   - `schema.file` (leer = automatisch `output/boilerplate/schema-boilerplates/canonical_event_v1.json`)
+  - `schema.source_boilerplates.enabled` (erzeugt source-nahe Schema-Boilerplates pro Input-Datei)
+  - `schema.source_boilerplates.dir` (leer = automatisch `output/boilerplate/schema-boilerplates/`)
 - Pre-Processing:
   - `preprocessing.text_fields`
   - `preprocessing.remove_line_breaks_and_tabs`
@@ -354,6 +358,9 @@ PROCESS_INPUT_MODE=boilerplate PROCESS_BOILERPLATE_DIR=output/boilerplate/runtim
 # Eigenes Schema-Boilerplate verwenden
 PROCESS_SCHEMA_FILE=output/boilerplate/schema-boilerplates/canonical_event_v1.json python3 main.py --postprocess
 
+# Source-nahe Schema-Boilerplates deaktivieren
+PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED=false python3 main.py --preprocess
+
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
 
@@ -375,6 +382,8 @@ Unterstuetzte ENV-Keys:
   - `PROCESS_BOILERPLATE_FILES`
   - `PROCESS_SCHEMA_ENABLED`
   - `PROCESS_SCHEMA_FILE`
+  - `PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED`
+  - `PROCESS_SCHEMA_SOURCE_BOILERPLATES_DIR`
   - `PROCESS_TEXT_FIELDS`
   - `PROCESS_CLEAN_REMOVE_LINE_BREAKS`
   - `PROCESS_CLEAN_REMOVE_HTML_TAGS`

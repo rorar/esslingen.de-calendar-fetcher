@@ -80,6 +80,8 @@ class TestProcessDataPipeline(unittest.TestCase):
                 "PROCESS_INPUT_MODE": "boilerplate",
                 "PROCESS_BOILERPLATE_DIR": "output/boilerplate/runtime-snapshots",
                 "PROCESS_BOILERPLATE_FILES": "a.json,b.json",
+                "PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED": "false",
+                "PROCESS_SCHEMA_SOURCE_BOILERPLATES_DIR": "output/boilerplate/schema-boilerplates/custom-source",
             },
             clear=False,
         ):
@@ -88,6 +90,11 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(updated["input"]["mode"], "boilerplate")
         self.assertEqual(updated["input"]["boilerplate_dir"], "output/boilerplate/runtime-snapshots")
         self.assertEqual(updated["input"]["boilerplate_files"], ["a.json", "b.json"])
+        self.assertFalse(updated["schema"]["source_boilerplates"]["enabled"])
+        self.assertEqual(
+            updated["schema"]["source_boilerplates"]["dir"],
+            "output/boilerplate/schema-boilerplates/custom-source",
+        )
 
     def test_run_pipeline_creates_boilerplate_and_split_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -167,6 +174,7 @@ class TestProcessDataPipeline(unittest.TestCase):
 
             self.assertEqual(len(written["boilerplate"]), 2)
             self.assertEqual(len(written["schema_boilerplate"]), 1)
+            self.assertEqual(len(written["source_schema_boilerplate"]), 2)
             self.assertGreaterEqual(len(written["csv"]), 3)
             self.assertGreaterEqual(len(written["xml"]), 3)
 
@@ -196,6 +204,13 @@ class TestProcessDataPipeline(unittest.TestCase):
             self.assertTrue(jsonld_boilerplate_file.exists())
             jsonld_payload = json.loads(jsonld_boilerplate_file.read_text(encoding="utf-8"))
             self.assertEqual(jsonld_payload["records"][0]["time"], "")
+
+            source_schema_file = out_dir / "boilerplate" / "schema-boilerplates" / "source_loadData_20307012.json"
+            self.assertTrue(source_schema_file.exists())
+            source_schema_payload = json.loads(source_schema_file.read_text(encoding="utf-8"))
+            field_names = [item["name"] for item in source_schema_payload["fields"]]
+            self.assertIn("id", field_names)
+            self.assertIn("titel", field_names)
 
     def test_run_pipeline_without_split_ignores_rows_value_and_omits_part_token(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -233,6 +248,7 @@ class TestProcessDataPipeline(unittest.TestCase):
 
             self.assertEqual(len(written["csv"]), 1)
             self.assertEqual(len(written["schema_boilerplate"]), 1)
+            self.assertEqual(len(written["source_schema_boilerplate"]), 1)
             expected = out_dir / "loadData_20307012_csv_20260218_130000.csv"
             self.assertTrue(expected.exists())
             self.assertNotIn("_part", expected.name)
@@ -298,6 +314,7 @@ class TestProcessDataPipeline(unittest.TestCase):
 
             self.assertEqual(len(written["boilerplate"]), 0)
             self.assertEqual(len(written["schema_boilerplate"]), 1)
+            self.assertEqual(len(written["source_schema_boilerplate"]), 0)
             self.assertEqual(len(written["boilerplate_input"]), 1)
             self.assertEqual(written["boilerplate_input"][0], boiler_file)
             self.assertEqual(len(written["csv"]), 1)
@@ -357,6 +374,7 @@ class TestProcessDataPipeline(unittest.TestCase):
             written = pipeline.run_pipeline(cfg, timestamp="20260218_150000")
 
             self.assertEqual(len(written["csv"]), 1)
+            self.assertEqual(len(written["source_schema_boilerplate"]), 1)
             csv_file = out_dir / "loadData_20307012_csv_20260218_150000.csv"
             self.assertTrue(csv_file.exists())
             csv_lines = csv_file.read_text(encoding="utf-8").splitlines()

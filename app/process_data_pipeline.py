@@ -26,6 +26,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "schema": {
         "enabled": True,
         "file": "",
+        "source_boilerplates": {
+            "enabled": True,
+            "dir": "",
+        },
     },
     "preprocessing": {
         "enabled": True,
@@ -136,8 +140,24 @@ def ensure_schema_config(config: dict[str, Any]) -> None:
 
     schema_file = str(schema_cfg.get("file", "")).strip()
 
+    source_cfg = schema_cfg.get("source_boilerplates")
+    if not isinstance(source_cfg, dict):
+        source_cfg = {}
+
+    source_enabled_raw = source_cfg.get("enabled", True)
+    if isinstance(source_enabled_raw, str):
+        source_enabled = parse_bool(source_enabled_raw)
+    else:
+        source_enabled = bool(source_enabled_raw)
+
+    source_dir = str(source_cfg.get("dir", "")).strip()
+
     schema_cfg["enabled"] = enabled
     schema_cfg["file"] = schema_file
+    schema_cfg["source_boilerplates"] = {
+        "enabled": source_enabled,
+        "dir": source_dir,
+    }
     config["schema"] = schema_cfg
 
 
@@ -237,6 +257,10 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         updated["schema"]["enabled"] = parse_bool(value)
     if value := env.get("PROCESS_SCHEMA_FILE"):
         updated["schema"]["file"] = value
+    if value := env.get("PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED"):
+        updated["schema"]["source_boilerplates"]["enabled"] = parse_bool(value)
+    if value := env.get("PROCESS_SCHEMA_SOURCE_BOILERPLATES_DIR"):
+        updated["schema"]["source_boilerplates"]["dir"] = value
 
     if value := env.get("PROCESS_TEXT_FIELDS"):
         updated["preprocessing"]["text_fields"] = parse_list(value)
@@ -512,12 +536,23 @@ def preprocess_records(records: list[dict[str, str]], preprocess_cfg: dict[str, 
     return cleaned_records
 
 
-def read_source_records(input_file: Path, config: dict[str, Any]) -> list[dict[str, str]]:
+def read_json_record_list(input_file: Path) -> list[dict[str, Any]]:
     payload = json.loads(input_file.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
         raise ValueError(f"Unerwartete JSON-Struktur (Liste erwartet): {input_file}")
-    normalized = [normalize_record(item, input_file.name, config) for item in payload if isinstance(item, dict)]
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def normalize_source_records(
+    raw_records: list[dict[str, Any]], source_file: str, config: dict[str, Any]
+) -> list[dict[str, str]]:
+    normalized = [normalize_record(item, source_file, config) for item in raw_records]
     return preprocess_records(normalized, config["preprocessing"])
+
+
+def read_source_records(input_file: Path, config: dict[str, Any]) -> list[dict[str, str]]:
+    raw_records = read_json_record_list(input_file)
+    return normalize_source_records(raw_records, input_file.name, config)
 
 
 def read_boilerplate_records(boilerplate_file: Path) -> tuple[str, list[dict[str, Any]]]:
@@ -557,6 +592,112 @@ def build_schema_boilerplate_payload() -> dict[str, Any]:
         "fields": CANONICAL_SCHEMA_FIELDS,
         "template_record": {name: "" for name in CANONICAL_FIELD_ORDER},
     }
+
+
+def infer_json_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    return "unknown"
+
+
+def default_template_value(types: list[str]) -> Any:
+    type_set = set(types)
+    if type_set == {"array"}:
+        return []
+    if type_set == {"object"}:
+        return {}
+    if type_set == {"boolean"}:
+        return False
+    if type_set <= {"integer", "number"} and type_set:
+        return 0
+    return ""
+
+
+def resolve_source_schema_boilerplate_dir(config: dict[str, Any], output_dir: Path) -> Path:
+    source_cfg = config.get("schema", {}).get("source_boilerplates", {})
+    dir_value = str(source_cfg.get("dir", "")).strip() if isinstance(source_cfg, dict) else ""
+    if dir_value:
+        return Path(dir_value)
+    return output_dir / "boilerplate" / "schema-boilerplates"
+
+
+def build_source_schema_boilerplate_payload(source_name: str, raw_records: list[dict[str, Any]]) -> dict[str, Any]:
+    field_order: list[str] = []
+    stats: dict[str, dict[str, Any]] = {}
+    total_records = len(raw_records)
+
+    for record in raw_records:
+        for key, value in record.items():
+            key_text = str(key)
+            if key_text not in stats:
+                stats[key_text] = {"count": 0, "types": set()}
+                field_order.append(key_text)
+            stats[key_text]["count"] += 1
+            stats[key_text]["types"].add(infer_json_type(value))
+
+    fields: list[dict[str, Any]] = []
+    template_record: dict[str, Any] = {}
+    for name in field_order:
+        stat = stats[name]
+        types = sorted(str(item) for item in stat["types"])
+        required = bool(total_records) and stat["count"] == total_records
+        fields.append(
+            {
+                "name": name,
+                "label": name,
+                "types": types,
+                "required": required,
+            }
+        )
+        template_record[name] = default_template_value(types)
+
+    return {
+        "schema_id": f"source_{source_name}_v1",
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "source": source_name,
+        "record_count": total_records,
+        "description": "Input-source schema boilerplate generated from raw source file.",
+        "fields": fields,
+        "template_record": template_record,
+    }
+
+
+def write_source_schema_boilerplate(
+    config: dict[str, Any],
+    output_dir: Path,
+    source_name: str,
+    raw_records: list[dict[str, Any]],
+    encoding: str,
+    line_ending: str,
+) -> Path | None:
+    source_cfg = config.get("schema", {}).get("source_boilerplates", {})
+    source_enabled = bool(source_cfg.get("enabled", True)) if isinstance(source_cfg, dict) else True
+    if not source_enabled:
+        return None
+
+    out_dir = resolve_source_schema_boilerplate_dir(config, output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"source_{source_name}.json"
+
+    payload = build_source_schema_boilerplate_payload(source_name, raw_records)
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if line_ending != "\n":
+        text = text.replace("\n", line_ending)
+    with out_path.open("w", encoding=encoding, newline="") as fp:
+        fp.write(text)
+    return out_path
 
 
 def write_schema_boilerplate(config: dict[str, Any], output_dir: Path, encoding: str, line_ending: str) -> Path | None:
@@ -815,6 +956,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
     written: dict[str, list[Path]] = {
         "boilerplate": [],
         "schema_boilerplate": [],
+        "source_schema_boilerplate": [],
         "boilerplate_input": [],
         "csv": [],
         "xml": [],
@@ -878,7 +1020,18 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
                 raise FileNotFoundError(f"Input-Datei nicht gefunden: {input_file}")
 
             source_name = input_file.stem
-            records = read_source_records(input_file, config)
+            raw_records = read_json_record_list(input_file)
+            source_schema_path = write_source_schema_boilerplate(
+                config,
+                output_dir,
+                source_name,
+                raw_records,
+                encoding,
+                line_ending,
+            )
+            if source_schema_path is not None:
+                written["source_schema_boilerplate"].append(source_schema_path)
+            records = normalize_source_records(raw_records, input_file.name, config)
             written["boilerplate"].append(write_boilerplate(output_dir, source_name, records, encoding, line_ending))
             export_source_records(source_name, records)
     else:
@@ -915,6 +1068,7 @@ def main() -> int:
     print("Processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
     print(f"Schema boilerplate files: {len(written['schema_boilerplate'])}")
+    print(f"Source schema boilerplate files: {len(written['source_schema_boilerplate'])}")
     print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")

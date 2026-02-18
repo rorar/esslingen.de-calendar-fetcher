@@ -32,6 +32,7 @@ def main() -> int:
     print("Preprocessing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
     print(f"Schema boilerplate files: {len(written['schema_boilerplate'])}")
+    print(f"Source schema boilerplate files: {len(written['source_schema_boilerplate'])}")
     return 0
 
 

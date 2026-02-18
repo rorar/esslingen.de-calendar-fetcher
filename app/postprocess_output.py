@@ -42,6 +42,7 @@ def main() -> int:
     print("Post-processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
     print(f"Schema boilerplate files: {len(written['schema_boilerplate'])}")
+    print(f"Source schema boilerplate files: {len(written['source_schema_boilerplate'])}")
     print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")

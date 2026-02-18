@@ -14,7 +14,11 @@
   },
   "schema": {
     "enabled": true,
-    "file": ""
+    "file": "",
+    "source_boilerplates": {
+      "enabled": true,
+      "dir": ""
+    }
   },
   "preprocessing": {
     "enabled": true,
