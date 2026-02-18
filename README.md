@@ -7,7 +7,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
 - `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten und erzeugt Boilerplate-JSON in `output/boilerplate/`).
-- `app/postprocess_output.py`: Pre- + Post-Processing (CSV/XML Export in `output/`).
+- `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
 - `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
 - `requirements.txt`: keine externen Python-Abhängigkeiten erforderlich.
@@ -29,7 +29,8 @@ Label entsprechen z. B. den Kategorienamen wie bspw. `Begegnung` im Kalender-Fro
 
 **Netzwerk-Hinweis:**
 `--update-filters` und alle Download/Profile-Aufrufe (`--profile ...`) benötigen Internetzugriff auf `www.esslingen.de`.
-Die lokalen Processing-Schritte (`--preprocess` / `--postprocess`) funktionieren auch ohne Internet, sofern in `structured-data/` bereits Eingabedateien vorhanden sind.
+Die lokalen Processing-Schritte (`--preprocess` / `--postprocess`) funktionieren auch ohne Internet, sofern Eingaben vorhanden sind:
+Rohdaten in `structured-data/` oder Boilerplates in `output/boilerplate/`.
 
 **Hinweis:** 
 Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
@@ -181,6 +182,16 @@ python3 main.py --postprocess --process-config config/processing_config.json
 python3 main.py --profile frauentage --postprocess
 ```
 
+13. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
+
+```bash
+python3 main.py --preprocess
+```
+
+```bash
+python3 main.py --postprocess --from-boilerplate
+```
+
 ## Advanced: Direkter Scriptaufruf
 
 ```bash
@@ -190,11 +201,36 @@ python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 
 ## Verarbeitung und Export (Pre-/Post-Processing)
 
-Die Pipeline verarbeitet `loadData_20307012.json` und `jsonld_20307012_generated.json`,
-bereinigt Textfelder und erzeugt daraus Boilerplate-JSON sowie optional CSV/XML.
+Die Pipeline kann in zwei Modi arbeiten:
 
-Voraussetzung:
-Die Eingabedateien in `structured-data/` müssen bereits vorhanden sein (z. B. durch einen früheren Download-Lauf).
+- `input.mode=raw`:
+  - liest Rohdaten aus `structured-data/*.json`
+  - führt Normalisierung + Pre-Processing aus
+  - schreibt Boilerplate nach `output/boilerplate/`
+  - erzeugt optional CSV/XML
+- `input.mode=boilerplate`:
+  - liest bereits bereinigte Datensätze aus `output/boilerplate/boilerplate_*.json`
+  - erzeugt CSV/XML ohne erneute Rohdaten-Normalisierung
+
+Voraussetzung bei `raw`:
+Die Eingabedateien in `structured-data/` müssen vorhanden sein (z. B. durch einen früheren Download-Lauf).
+
+Voraussetzung bei `boilerplate`:
+Es müssen Boilerplate-Dateien in `output/boilerplate/` (oder per Config/ENV gesetzt) vorhanden sein.
+
+### Empfohlener 2-Phasen-Flow (echte Übergabe)
+
+1. Pre-Processing erzeugt Boilerplates
+
+```bash
+python3 main.py --preprocess
+```
+
+2. Post-Processing exportiert aus Boilerplates
+
+```bash
+python3 main.py --postprocess --from-boilerplate
+```
 
 ### Nur Pre-Processing
 
@@ -224,6 +260,12 @@ Ueber `main.py` (empfohlen):
 python3 main.py --postprocess
 ```
 
+Aus Boilerplates (2-Phasen-Flow):
+
+```bash
+python3 main.py --postprocess --from-boilerplate
+```
+
 Mit eigener Config:
 
 ```bash
@@ -242,6 +284,12 @@ Direktes Skript:
 python3 app/postprocess_output.py --config config/processing_config.json
 ```
 
+Direktes Skript aus Boilerplates:
+
+```bash
+python3 app/postprocess_output.py --config config/processing_config.json --from-boilerplate
+```
+
 Alternativ direkt ueber die kombinierte Pipeline:
 
 ```bash
@@ -256,6 +304,11 @@ Best-Practice Default:
 
 Wichtige Optionen in der Config:
 
+- Input:
+  - `input.mode` (`raw` oder `boilerplate`)
+  - `input.files` (Rohdaten-Dateien für `raw`)
+  - `input.boilerplate_dir` (Quelle für `boilerplate_*.json`)
+  - `input.boilerplate_files` (optionale explizite Dateiliste statt `boilerplate_dir`)
 - Pre-Processing:
   - `preprocessing.text_fields`
   - `preprocessing.remove_line_breaks_and_tabs`
@@ -287,6 +340,9 @@ Dateinamen-Template:
 # Formate und Zielverzeichnis
 PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 main.py --postprocess
 
+# Post-Processing direkt aus Boilerplates
+PROCESS_INPUT_MODE=boilerplate PROCESS_BOILERPLATE_DIR=output/boilerplate python3 main.py --postprocess
+
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
 
@@ -302,7 +358,10 @@ python3 main.py --postprocess
 Unterstuetzte ENV-Keys:
 
 - Input/Pre-Processing:
+  - `PROCESS_INPUT_MODE`
   - `PROCESS_INPUT_FILES`
+  - `PROCESS_BOILERPLATE_DIR`
+  - `PROCESS_BOILERPLATE_FILES`
   - `PROCESS_TEXT_FIELDS`
   - `PROCESS_CLEAN_REMOVE_LINE_BREAKS`
   - `PROCESS_CLEAN_REMOVE_HTML_TAGS`

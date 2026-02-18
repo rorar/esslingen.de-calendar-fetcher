@@ -15,10 +15,13 @@ from typing import Any
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "input": {
+        "mode": "raw",
         "files": [
             "structured-data/loadData_20307012.json",
             "structured-data/jsonld_20307012_generated.json",
-        ]
+        ],
+        "boilerplate_dir": "output/boilerplate",
+        "boilerplate_files": [],
     },
     "preprocessing": {
         "enabled": True,
@@ -119,6 +122,13 @@ def parse_bool(value: str) -> bool:
     raise ValueError(f"Ungueltiger boolescher Wert: {value}")
 
 
+def normalize_input_mode(input_cfg: dict[str, Any]) -> None:
+    mode = str(input_cfg.get("mode", "raw")).strip().lower()
+    if mode not in {"raw", "boilerplate"}:
+        raise ValueError("input.mode muss 'raw' oder 'boilerplate' sein")
+    input_cfg["mode"] = mode
+
+
 def ensure_rows_per_file_config(export_cfg: dict[str, Any]) -> None:
     rows_cfg = export_cfg.get("rows_per_file")
 
@@ -202,8 +212,14 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     env = os.environ
     ensure_rows_per_file_config(updated["export"])
 
+    if value := env.get("PROCESS_INPUT_MODE"):
+        updated["input"]["mode"] = value.strip().lower()
     if value := env.get("PROCESS_INPUT_FILES"):
         updated["input"]["files"] = parse_list(value)
+    if value := env.get("PROCESS_BOILERPLATE_DIR"):
+        updated["input"]["boilerplate_dir"] = value
+    if value := env.get("PROCESS_BOILERPLATE_FILES"):
+        updated["input"]["boilerplate_files"] = parse_list(value)
 
     if value := env.get("PROCESS_TEXT_FIELDS"):
         updated["preprocessing"]["text_fields"] = parse_list(value)
@@ -256,6 +272,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         updated["export"]["filename_context"]["category"] = value
 
     ensure_rows_per_file_config(updated["export"])
+    normalize_input_mode(updated["input"])
     updated["export"]["line_ending"] = decode_escapes(str(updated["export"]["line_ending"]))
     normalize_csv_options(updated)
     return updated
@@ -270,6 +287,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
 
     merged = deep_merge_dict(DEFAULT_CONFIG, user_config)
     ensure_rows_per_file_config(merged["export"])
+    normalize_input_mode(merged["input"])
     return apply_env_overrides(merged)
 
 
@@ -400,6 +418,39 @@ def read_source_records(input_file: Path, config: dict[str, Any]) -> list[dict[s
         raise ValueError(f"Unerwartete JSON-Struktur (Liste erwartet): {input_file}")
     normalized = [normalize_record(item, input_file.name, config) for item in payload if isinstance(item, dict)]
     return preprocess_records(normalized, config["preprocessing"])
+
+
+def read_boilerplate_records(boilerplate_file: Path) -> tuple[str, list[dict[str, Any]]]:
+    payload = json.loads(boilerplate_file.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Unerwartete Boilerplate-Struktur (Objekt erwartet): {boilerplate_file}")
+
+    records = payload.get("records")
+    if not isinstance(records, list):
+        raise ValueError(f"Unerwartete Boilerplate-Struktur ('records' Liste erwartet): {boilerplate_file}")
+
+    source_name = str(payload.get("source", "")).strip()
+    if not source_name:
+        source_name = boilerplate_file.stem.removeprefix("boilerplate_")
+
+    safe_records = [dict(item) for item in records if isinstance(item, dict)]
+    return source_name, safe_records
+
+
+def collect_boilerplate_input_files(config: dict[str, Any]) -> list[Path]:
+    input_cfg = config["input"]
+    explicit_files = [str(path).strip() for path in input_cfg.get("boilerplate_files", []) if str(path).strip()]
+    if explicit_files:
+        return [Path(path) for path in explicit_files]
+
+    boilerplate_dir = Path(str(input_cfg.get("boilerplate_dir", "output/boilerplate")))
+    if not boilerplate_dir.exists():
+        raise FileNotFoundError(f"Boilerplate-Verzeichnis nicht gefunden: {boilerplate_dir}")
+
+    files = sorted(boilerplate_dir.glob("boilerplate_*.json"))
+    if not files:
+        raise FileNotFoundError(f"Keine Boilerplate-Dateien gefunden in: {boilerplate_dir}")
+    return files
 
 
 def write_boilerplate(
@@ -544,10 +595,7 @@ def export_xml(
 
 
 def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[str, list[Path]]:
-    input_files = [Path(path) for path in config["input"]["files"]]
-    if not input_files:
-        raise ValueError("Keine input.files konfiguriert")
-
+    normalize_input_mode(config["input"])
     output_dir = Path(str(config["export"]["output_dir"]))
     output_dir.mkdir(parents=True, exist_ok=True)
     encoding = str(config["export"]["encoding"])
@@ -558,18 +606,11 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
     rows_per_file = int(rows_cfg.get("value", 1000))
     timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    written: dict[str, list[Path]] = {"boilerplate": [], "csv": [], "xml": []}
+    written: dict[str, list[Path]] = {"boilerplate": [], "boilerplate_input": [], "csv": [], "xml": []}
 
-    for input_file in input_files:
-        if not input_file.exists():
-            raise FileNotFoundError(f"Input-Datei nicht gefunden: {input_file}")
-
-        source_name = input_file.stem
-        records = read_source_records(input_file, config)
-        written["boilerplate"].append(write_boilerplate(output_dir, source_name, records, encoding, line_ending))
-
+    def export_source_records(source_name: str, records: list[dict[str, Any]]) -> None:
         if not config["export"].get("enabled", True):
-            continue
+            return
 
         formats = [str(fmt).lower() for fmt in config["export"]["formats"]]
         headers, raw_rows = build_export_rows(records, config)
@@ -609,6 +650,30 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
                 else:
                     raise ValueError(f"Nicht unterstuetztes Export-Format: {fmt}")
 
+    input_mode = str(config["input"].get("mode", "raw"))
+    if input_mode == "raw":
+        input_files = [Path(path) for path in config["input"].get("files", [])]
+        if not input_files:
+            raise ValueError("Keine input.files konfiguriert")
+
+        for input_file in input_files:
+            if not input_file.exists():
+                raise FileNotFoundError(f"Input-Datei nicht gefunden: {input_file}")
+
+            source_name = input_file.stem
+            records = read_source_records(input_file, config)
+            written["boilerplate"].append(write_boilerplate(output_dir, source_name, records, encoding, line_ending))
+            export_source_records(source_name, records)
+    else:
+        boilerplate_files = collect_boilerplate_input_files(config)
+        for boilerplate_file in boilerplate_files:
+            if not boilerplate_file.exists():
+                raise FileNotFoundError(f"Boilerplate-Datei nicht gefunden: {boilerplate_file}")
+
+            source_name, records = read_boilerplate_records(boilerplate_file)
+            written["boilerplate_input"].append(boilerplate_file)
+            export_source_records(source_name, records)
+
     return written
 
 
@@ -632,6 +697,7 @@ def main() -> int:
 
     print("Processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
+    print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")
     return 0

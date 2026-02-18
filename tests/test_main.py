@@ -119,6 +119,14 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(script_path.name, "postprocess_output.py")
         self.assertEqual(args, ["--config", "config/processing_config.json"])
 
+    def test_run_postprocess_from_boilerplate_uses_wrapper_flag(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_postprocess("config/processing_config.json", from_boilerplate=True)
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "postprocess_output.py")
+        self.assertEqual(args, ["--config", "config/processing_config.json", "--from-boilerplate"])
+
     def test_main_preprocess_only_does_not_run_download(self) -> None:
         with (
             patch("sys.argv", ["main.py", "--preprocess"]),
@@ -145,7 +153,24 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(rc, 0)
         mocked_profile.assert_called_once()
         mocked_download.assert_called_once()
-        mocked_post.assert_called_once_with("x.json")
+        mocked_post.assert_called_once_with("x.json", from_boilerplate=False)
+
+    def test_main_postprocess_with_from_boilerplate_passes_flag(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--postprocess", "--from-boilerplate"]),
+            patch("main.run_postprocess", return_value=0) as mocked_post,
+            patch("main.run_download") as mocked_download,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_not_called()
+        mocked_post.assert_called_once_with("config/processing_config.json", from_boilerplate=True)
+
+    def test_main_from_boilerplate_without_postprocess_fails(self) -> None:
+        with patch("sys.argv", ["main.py", "--from-boilerplate"]):
+            rc = main.main()
+        self.assertEqual(rc, 1)
 
 
 if __name__ == "__main__":

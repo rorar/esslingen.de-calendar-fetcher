@@ -4,10 +4,13 @@
     "All settings can be overridden by environment variables (PROCESS_...)"
   ],
   "input": {
+    "mode": "raw",
     "files": [
       "structured-data/loadData_20307012.json",
       "structured-data/jsonld_20307012_generated.json"
-    ]
+    ],
+    "boilerplate_dir": "output/boilerplate",
+    "boilerplate_files": []
   },
   "preprocessing": {
     "enabled": true,

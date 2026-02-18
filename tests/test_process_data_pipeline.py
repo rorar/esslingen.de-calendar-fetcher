@@ -67,6 +67,23 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertIsNone(updated["export"]["csv"]["escapechar"])
         self.assertTrue(updated["export"]["csv"]["doublequote"])
 
+    def test_env_overrides_for_boilerplate_input_mode(self) -> None:
+        base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        with patch.dict(
+            os.environ,
+            {
+                "PROCESS_INPUT_MODE": "boilerplate",
+                "PROCESS_BOILERPLATE_DIR": "output/boilerplate",
+                "PROCESS_BOILERPLATE_FILES": "a.json,b.json",
+            },
+            clear=False,
+        ):
+            updated = pipeline.apply_env_overrides(base)
+
+        self.assertEqual(updated["input"]["mode"], "boilerplate")
+        self.assertEqual(updated["input"]["boilerplate_dir"], "output/boilerplate")
+        self.assertEqual(updated["input"]["boilerplate_files"], ["a.json", "b.json"])
+
     def test_run_pipeline_creates_boilerplate_and_split_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -207,6 +224,74 @@ class TestProcessDataPipeline(unittest.TestCase):
             csv_text = expected.read_text(encoding="utf-8")
             self.assertIn("Event 1", csv_text)
             self.assertIn("Event 2", csv_text)
+
+    def test_run_pipeline_from_boilerplate_exports_without_rewriting_boilerplate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            out_dir = root / "out"
+            boiler_dir = root / "boilerplate"
+            boiler_dir.mkdir(parents=True, exist_ok=True)
+
+            boiler_file = boiler_dir / "boilerplate_loadData_20307012.json"
+            boiler_file.write_text(
+                json.dumps(
+                    {
+                        "source": "loadData_20307012",
+                        "generated_at": "2026-02-18T12:00:00",
+                        "record_count": 1,
+                        "records": [
+                            {
+                                "id": "1",
+                                "title": "Bereinigt",
+                                "start_date": "2026-02-18",
+                                "end_date": "2026-02-18",
+                                "time": "19:30",
+                                "description": "A & B",
+                                "location_name": "Ort A",
+                                "location_postal_code": "73728",
+                                "location_city": "Esslingen",
+                                "category": "Bühne Theater",
+                                "series": "Frauenwochen",
+                                "url": "https://example.org/1",
+                                "source_type": "loadData",
+                                "source_file": "loadData_20307012.json",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = pipeline.deep_merge_dict(
+                pipeline.DEFAULT_CONFIG,
+                {
+                    "input": {
+                        "mode": "boilerplate",
+                        "boilerplate_dir": str(boiler_dir),
+                    },
+                    "export": {
+                        "output_dir": str(out_dir),
+                        "formats": ["csv"],
+                        "rows_per_file": {"enabled": False, "value": 1000},
+                        "filename_template": "{source}_{format}_{timestamp}{_part{part}}.{ext}",
+                    },
+                },
+            )
+            pipeline.normalize_csv_options(cfg)
+            written = pipeline.run_pipeline(cfg, timestamp="20260218_140000")
+
+            self.assertEqual(len(written["boilerplate"]), 0)
+            self.assertEqual(len(written["boilerplate_input"]), 1)
+            self.assertEqual(written["boilerplate_input"][0], boiler_file)
+            self.assertEqual(len(written["csv"]), 1)
+
+            expected = out_dir / "loadData_20307012_csv_20260218_140000.csv"
+            self.assertTrue(expected.exists())
+            csv_text = expected.read_text(encoding="utf-8")
+            self.assertIn("Bereinigt", csv_text)
+            self.assertIn("A & B", csv_text)
+            self.assertFalse((out_dir / "boilerplate").exists())
 
 
 if __name__ == "__main__":

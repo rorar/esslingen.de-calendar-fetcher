@@ -13,16 +13,24 @@ from app import process_data_pipeline
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run preprocessing plus export to output formats.")
+    parser = argparse.ArgumentParser(description="Run post-processing export to output formats.")
     parser.add_argument(
         "--config",
         default="config/processing_config.json",
         help="Path to config file (default: config/processing_config.json)",
     )
+    parser.add_argument(
+        "--from-boilerplate",
+        action="store_true",
+        help="Read records from output/boilerplate/*.json (or config input.boilerplate_*) instead of raw input files",
+    )
     args = parser.parse_args()
 
     try:
         config = process_data_pipeline.load_config(Path(args.config))
+        if args.from_boilerplate:
+            config["input"]["mode"] = "boilerplate"
+            config["preprocessing"]["enabled"] = False
         written = process_data_pipeline.run_pipeline(config)
     except Exception as exc:  # pragma: no cover
         print(str(exc))
@@ -30,6 +38,7 @@ def main() -> int:
 
     print("Post-processing completed.")
     print(f"Boilerplate files: {len(written['boilerplate'])}")
+    print(f"Boilerplate input files: {len(written['boilerplate_input'])}")
     print(f"CSV files: {len(written['csv'])}")
     print(f"XML files: {len(written['xml'])}")
     return 0

@@ -97,9 +97,12 @@ def run_preprocess(config_path: str) -> int:
     return run_python_script(script, ["--config", config_path])
 
 
-def run_postprocess(config_path: str) -> int:
+def run_postprocess(config_path: str, from_boilerplate: bool = False) -> int:
     script = Path(__file__).resolve().parent / "app" / "postprocess_output.py"
-    return run_python_script(script, ["--config", config_path])
+    args = ["--config", config_path]
+    if from_boilerplate:
+        args.append("--from-boilerplate")
+    return run_python_script(script, args)
 
 
 def load_filter_items(file_path: Path) -> list[dict[str, str]]:
@@ -321,6 +324,11 @@ def main() -> int:
         help="Run postprocessing via app/postprocess_output.py",
     )
     parser.add_argument(
+        "--from-boilerplate",
+        action="store_true",
+        help="Use boilerplate JSON files as input for --postprocess",
+    )
+    parser.add_argument(
         "--process-config",
         default="config/processing_config.json",
         help="Path to processing config for --preprocess/--postprocess",
@@ -329,6 +337,10 @@ def main() -> int:
 
     filter_dir = Path(args.filter_dir)
     processing_requested = bool(args.preprocess or args.postprocess)
+
+    if args.from_boilerplate and not args.postprocess:
+        print("--from-boilerplate kann nur zusammen mit --postprocess verwendet werden")
+        return 1
 
     if args.update_filters:
         rc = update_filters(filter_dir)
@@ -356,7 +368,7 @@ def main() -> int:
             return rc
 
     if args.postprocess:
-        rc = run_postprocess(args.process_config)
+        rc = run_postprocess(args.process_config, from_boilerplate=args.from_boilerplate)
         if rc != 0:
             return rc
 
