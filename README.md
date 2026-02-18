@@ -225,6 +225,15 @@ Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerpla
 `export.fields` und `export.field_mappings` in der Config sind damit optional und dienen als Override.
 Die source-nahen Schema-Boilerplates entsprechen den Feldern der Eingangsdateien und können als Bearbeitungsgrundlage dienen.
 
+### Artefakte unter `output/boilerplate/`
+
+- `output/boilerplate/runtime-snapshots/`
+  - enthält die bereinigten Laufzeitdaten (`boilerplate_<source>.json`) für den Export-Flow.
+- `output/boilerplate/schema-boilerplates/canonical_event_v1.json`
+  - kanonische Felddefinition für Export-Reihenfolge und Standard-Labels.
+- `output/boilerplate/schema-boilerplates/source_<source>.json`
+  - source-nahe Felddefinitionen aus den Rohdateien (z. B. `loadData_20307012.json`), gedacht als anpassbare Bearbeitungsgrundlage.
+
 ### Empfohlener 2-Phasen-Flow (echte Übergabe)
 
 1. Pre-Processing erzeugt Boilerplates
@@ -314,7 +323,7 @@ Wichtige Optionen in der Config:
 - Input:
   - `input.mode` (`raw` oder `boilerplate`)
   - `input.files` (Rohdaten-Dateien für `raw`)
-  - `input.boilerplate_dir` (Quelle für `boilerplate_*.json`)
+  - `input.boilerplate_dir` (Quelle für Runtime-Snapshots `boilerplate_*.json`)
   - `input.boilerplate_files` (optionale explizite Dateiliste statt `boilerplate_dir`)
 - Schema:
   - `schema.enabled`
