@@ -12,15 +12,25 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 `main.py` steuert den Download über Profile und ruft intern `app/fetch_structured_data.py` auf.
 
-```bash
-python3 main.py --profile every_date
-python3 main.py --profile frauentage
-```
-
-Filter-Mappings über `main.py` aktualisieren:
+### Schritt 1 (empfohlen): Filter-Optionen aktualisieren
 
 ```bash
 python3 main.py --update-filters
+```
+
+Warum zuerst?
+Damit Label- und ID-Mappings aktuell sind und du das Programm korrekt konfigurieren kannst.
+
+Label entsprechen z. B. den Kategorienamen wie bspw. `Begegnung` im Kalender-Frontend, IDs sind die korrespondierenden internen Werte für API-Parameter.
+
+**Hinweis:** 
+Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
+
+### Schritt 2: Profil ausführen
+
+```bash
+python3 main.py --profile every_date
+python3 main.py --profile frauentage
 ```
 
 Optional anderes Ausgabeverzeichnis:
@@ -31,7 +41,7 @@ python3 main.py --profile frauentage --out-dir structured-data
 
 ## Profile in `main.py`
 
-Hardcoded (bleiben erhalten):
+Hardcoded Profile:
 
 - `DOWNLOAD_EVERY_DATE`
   - entspricht: `--series-id=-1 --anz=-1`
@@ -58,12 +68,29 @@ Beispiele:
 
 ```bash
 python3 main.py --profile DOWNLOAD_CAT_908119
-python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
-python3 main.py --profile DOWNLOAD_SAMMEL_Frauenwochen
+```
 
+```bash
+python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
+```
+
+```bash
+python3 main.py --profile DOWNLOAD_SAMMEL_Frauenwochen
+```
+
+```bash
 python3 main.py --profile 'DOWNLOAD_CAT_ID=908119,908120|908121'
+```
+
+```bash
 python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
+```
+
+```bash
 python3 main.py --profile 'DOWNLOAD_SAMMEL_ID=330100|11602300'
+```
+
+```bash
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
 ```
 
@@ -126,6 +153,27 @@ Output-Dateien:
 - `filter/q.sammelbegrif.id.json`
 - `filter/q.kat.id.json`
 
+### Woher kommen Labels und IDs?
+
+- Primärquelle ist die Kalenderseite:
+  - `https://www.esslingen.de/freizeit-und-engagement/veranstaltungskalender`
+- Extraktion erfolgt in `app/fetch_filter_options.py`:
+  - `extract_series_options`: liest `<select name="q.sammelbegrif.id">` für Sammelbegriff-IDs.
+  - `extract_category_options`: liest `q.kat.id`-Checkboxen/Labels für Kategorie-IDs.
+- Diese JSON-Dateien werden von `main.py` für Label/ID-Auflösung genutzt (`DOWNLOAD_CAT_*`, `DOWNLOAD_SAMMEL_*` und Advanced-Varianten).
+
+### Für Maintainer: Seitenänderungen / Break-Fix
+
+1. Filter neu laden:
+   - `python3 main.py --update-filters`
+2. Ergebnis prüfen:
+   - `filter/q.sammelbegrif.id.json` und `filter/q.kat.id.json` müssen `items` mit Einträgen enthalten.
+3. Bei leerem/fehlerhaftem Ergebnis Parser anpassen:
+   - `app/fetch_filter_options.py` Funktionen `extract_series_options` und `extract_category_options`.
+4. Regression prüfen:
+   - `python3 -m unittest discover -s tests -p 'test_*.py'`
+5. Kurz-Smoke-Test mit README-Befehlen:
+   - z. B. `python3 main.py --profile DOWNLOAD_FRAUENTAGE`
 
 ## Output und Versionierung
 
@@ -298,7 +346,7 @@ Beispiel (Frauenwochen komplett):
 python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 ```
 
-### Aktuelle Dateien wurden überschrieben
+### Aktuelle Dateien in `structured-data/` wurden überschrieben
 
 Das ist beabsichtigt.
 Die jeweils letzte Version liegt in `structured-data/`, ältere Stände in `structured-data/history/` mit Zeitstempel.
