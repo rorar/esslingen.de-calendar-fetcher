@@ -45,6 +45,12 @@
       "required": false
     },
     {
+      "name": "zeit_kommentar",
+      "label": "ZeitKommentar",
+      "type": "string",
+      "required": false
+    },
+    {
       "name": "description",
       "label": "Beschreibung",
       "type": "string",
@@ -107,6 +113,7 @@
     "time": "",
     "start_time": "",
     "end_time": "",
+    "zeit_kommentar": "",
     "description": "",
     "location_name": "",
     "location_postal_code": "",

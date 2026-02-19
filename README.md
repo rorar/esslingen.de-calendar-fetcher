@@ -399,9 +399,21 @@ Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerpla
 Im Projekt zeigt `schema.file` auf `config/schema/canonical_event_v1.json` (versionierte Source of Truth).
 Source-nahe Schema-Boilerplates sind optional und standardmäßig deaktiviert.
 Zeit-Hinweis:
-Wenn `time` einen Bereich enthält (z. B. `18:00-20:00`), werden zusätzlich `start_time=18:00` und `end_time=20:00` exportiert.
+`time` bleibt als Original-String erhalten (z. B. `16 - 17 Uhr telefonisch`).
+Zusätzlich werden strukturierte Felder extrahiert:
+- `start_time` (z. B. `16:00`)
+- `end_time` (z. B. `17:00`)
+- `zeit_kommentar` (z. B. `telefonisch`, `persönlich`, `ab`, `Ca.`)
+Erkannte Trennzeichen umfassen u. a. `-`, `bis`, `bis zu`, `+`, inklusive Varianten wie `14-16Uhr` oder `17.30 Uhr`.
 Replacement-Hinweis:
 Per Config kannst du gezielt Werte ersetzen, z. B. `location_name: "Ort siehe Beschreibung"` -> `"Kommunales Kino"`.
+
+Zeitformat-Historie (Edgecase-Analyse):
+Die Zeitparser-Abdeckung über `structured-data/` und `structured-data/history/` kannst du mit folgendem Report prüfen:
+
+```bash
+python3 app/analyze_time_formats.py --output structured-data/history/time_format_history.json
+```
 
 ### Artefakte unter `output/boilerplate/`
 

@@ -31,6 +31,7 @@
       "time",
       "start_time",
       "end_time",
+      "zeit_kommentar",
       "url"
     ],
     "remove_line_breaks_and_tabs": true,

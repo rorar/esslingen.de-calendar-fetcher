@@ -43,6 +43,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "time",
             "start_time",
             "end_time",
+            "zeit_kommentar",
             "url",
         ],
         "remove_line_breaks_and_tabs": True,
@@ -98,6 +99,7 @@ CANONICAL_SCHEMA_FIELDS: list[dict[str, Any]] = [
     {"name": "time", "label": "Uhrzeit", "type": "string", "required": False},
     {"name": "start_time", "label": "Startzeit", "type": "string", "required": False},
     {"name": "end_time", "label": "Endzeit", "type": "string", "required": False},
+    {"name": "zeit_kommentar", "label": "ZeitKommentar", "type": "string", "required": False},
     {"name": "description", "label": "Beschreibung", "type": "string", "required": False},
     {"name": "location_name", "label": "Ort", "type": "string", "required": False},
     {"name": "location_postal_code", "label": "PLZ", "type": "string", "required": False},
@@ -558,36 +560,133 @@ def format_date(value: Any, input_formats: list[str], output_format: str) -> str
     return text
 
 
+TIME_TOKEN_PATTERN = r"\d{1,2}(?:[:.]\d{1,2})?"
+TIME_RANGE_REGEX = re.compile(
+    rf"(?P<start>{TIME_TOKEN_PATTERN})\s*(?:-|bis(?:\s+zu)?|to)\s*(?P<end>{TIME_TOKEN_PATTERN})(?:\s*uhr\b)?",
+    flags=re.IGNORECASE,
+)
+TIME_MULTI_REGEX = re.compile(
+    rf"(?P<start>{TIME_TOKEN_PATTERN})\s*(?P<connector>\+|,|/|&|und)\s*(?P<end>{TIME_TOKEN_PATTERN})(?:\s*uhr\b)?",
+    flags=re.IGNORECASE,
+)
+TIME_SINGLE_REGEX = re.compile(rf"(?P<time>{TIME_TOKEN_PATTERN})(?:\s*uhr\b)?", flags=re.IGNORECASE)
+
+
+def normalize_time_source_text(value: Any) -> str:
+    text = join_values(value)
+    if not text:
+        return ""
+    text = text.replace("\u00a0", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def normalize_time_for_parsing(value: str) -> str:
+    text = value.replace("–", "-").replace("—", "-").replace("−", "-")
+    text = re.sub(r"(?i)(\d)uhr\b", r"\1 Uhr", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def parse_time_fragment(value: str) -> str | None:
-    text = value.strip()
+    text = value.strip().replace(".", ":")
     match = re.fullmatch(r"(\d{1,2})(?::(\d{1,2}))?", text)
     if not match:
         return None
     hour = int(match.group(1))
-    minute = int(match.group(2) or "0")
+    minute_raw = match.group(2)
+    minute = int(minute_raw) if minute_raw is not None else 0
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
         return None
     return f"{hour:02d}:{minute:02d}"
 
 
-def normalize_time_text(value: Any) -> str:
-    text = join_values(value).strip()
-    if not text:
-        return ""
-
-    text = text.replace("–", "-").replace("—", "-")
-    text = re.sub(r"\s*uhr\b", "", text, flags=re.IGNORECASE).strip()
+def clean_time_comment(value: str) -> str:
+    text = value
+    text = re.sub(r"(?i)\buhr\b", " ", text)
+    text = re.sub(r"\s+\)", ")", text)
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"\s*([,;])\s*", r"\1 ", text)
     text = re.sub(r"\s+", " ", text)
+    return text.strip(" ,;:-")
 
-    range_parts = re.split(r"\s*-\s*|\s+bis\s+", text, maxsplit=1, flags=re.IGNORECASE)
-    if len(range_parts) == 2:
-        start = parse_time_fragment(range_parts[0])
-        end = parse_time_fragment(range_parts[1])
-        if start and end:
-            return f"{start}-{end}"
 
-    normalized = parse_time_fragment(text)
-    return normalized if normalized else text
+def extract_time_components(value: Any) -> tuple[str, str, str]:
+    raw = normalize_time_source_text(value)
+    if not raw:
+        return "", "", ""
+
+    text = normalize_time_for_parsing(raw)
+
+    range_match = TIME_RANGE_REGEX.search(text)
+    if range_match:
+        start = parse_time_fragment(range_match.group("start")) or ""
+        end = parse_time_fragment(range_match.group("end")) or ""
+        comment = clean_time_comment(f"{text[:range_match.start()]} {text[range_match.end():]}")
+        return start, end, comment
+
+    multi_match = TIME_MULTI_REGEX.search(text)
+    if multi_match:
+        start = parse_time_fragment(multi_match.group("start")) or ""
+        end = parse_time_fragment(multi_match.group("end")) or ""
+        comment = clean_time_comment(f"{text[:multi_match.start()]} {text[multi_match.end():]}")
+        return start, end, comment
+
+    single_match = TIME_SINGLE_REGEX.search(text)
+    if single_match:
+        start = parse_time_fragment(single_match.group("time")) or ""
+        comment = clean_time_comment(f"{text[:single_match.start()]} {text[single_match.end():]}")
+        return start, "", comment
+
+    fragments: list[str] = []
+    for match in re.finditer(TIME_TOKEN_PATTERN, text):
+        parsed = parse_time_fragment(match.group(0))
+        if parsed:
+            fragments.append(parsed)
+
+    if fragments:
+        start = fragments[0]
+        end = fragments[1] if len(fragments) > 1 else ""
+        remove_limit = 2 if len(fragments) > 1 else 1
+        removed = 0
+
+        def replace_first_fragments(match: re.Match[str]) -> str:
+            nonlocal removed
+            parsed = parse_time_fragment(match.group(0))
+            if parsed and removed < remove_limit:
+                removed += 1
+                return " "
+            return match.group(0)
+
+        comment = clean_time_comment(re.sub(TIME_TOKEN_PATTERN, replace_first_fragments, text))
+        return start, end, comment
+
+    return "", "", clean_time_comment(text)
+
+
+def normalize_time_text(value: Any) -> str:
+    return normalize_time_source_text(value)
+
+
+def parse_load_data_time(value: Any) -> dict[str, str]:
+    time_text = normalize_time_source_text(value)
+    start_time, end_time, comment = extract_time_components(time_text)
+    return {
+        "time": time_text,
+        "start_time": start_time,
+        "end_time": end_time,
+        "zeit_kommentar": comment,
+    }
+
+
+def build_time_format_key(value: Any) -> str:
+    text = normalize_time_source_text(value)
+    if not text:
+        return "<empty>"
+    normalized = normalize_time_for_parsing(text.casefold())
+    normalized = re.sub(TIME_TOKEN_PATTERN, "<time>", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized if normalized else "<empty>"
 
 
 def extract_time_from_datetime(value: Any) -> str:
@@ -610,32 +709,8 @@ def extract_time_from_datetime(value: Any) -> str:
 
 
 def split_time_range(value: str) -> tuple[str, str]:
-    text = str(value).strip()
-    if not text:
-        return "", ""
-
-    exact_range = re.fullmatch(r"(\d{2}:\d{2})-(\d{2}:\d{2})", text)
-    if exact_range:
-        return exact_range.group(1), exact_range.group(2)
-
-    single = parse_time_fragment(text)
-    if single:
-        return single, ""
-
-    # Fallback: extract first 1-2 time-like fragments from free text.
-    # Example: "ab 18:00 bis 20:00" -> 18:00 / 20:00
-    matches = re.findall(r"\b(\d{1,2}):(\d{2})\b", text)
-    parsed: list[str] = []
-    for hour, minute in matches:
-        fragment = parse_time_fragment(f"{hour}:{minute}")
-        if fragment:
-            parsed.append(fragment)
-
-    if len(parsed) >= 2:
-        return parsed[0], parsed[1]
-    if len(parsed) == 1:
-        return parsed[0], ""
-    return "", ""
+    start, end, _comment = extract_time_components(value)
+    return start, end
 
 
 def compose_time_value(start_time: str, end_time: str) -> str:
@@ -674,6 +749,7 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
             "time": compose_time_value(start_time, end_time),
             "start_time": start_time,
             "end_time": end_time,
+            "zeit_kommentar": "",
             "description": join_values(record.get("description")),
             "location_name": join_values(location.get("name") if isinstance(location, dict) else location),
             "location_postal_code": join_values(address.get("postalCode") if isinstance(address, dict) else ""),
@@ -685,17 +761,17 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
             "source_file": source_file,
         }
 
-    normalized_time = normalize_time_text(record.get("zeit"))
-    start_time, end_time = split_time_range(normalized_time)
+    parsed_time = parse_load_data_time(record.get("zeit"))
 
     return {
         "id": join_values(record.get("id")),
         "title": join_values(record.get("titel")),
         "start_date": format_date(record.get("von"), date_input_formats, date_output_format),
         "end_date": format_date(record.get("bis") or record.get("von"), date_input_formats, date_output_format),
-        "time": normalized_time,
-        "start_time": start_time,
-        "end_time": end_time,
+        "time": parsed_time["time"],
+        "start_time": parsed_time["start_time"],
+        "end_time": parsed_time["end_time"],
+        "zeit_kommentar": parsed_time["zeit_kommentar"],
         "description": join_values(record.get("beschreibung") or record.get("kurzbeschreibung")),
         "location_name": join_values(record.get("location")),
         "location_postal_code": join_values(record.get("location_plz")),

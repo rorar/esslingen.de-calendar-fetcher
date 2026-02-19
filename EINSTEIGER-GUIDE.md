@@ -194,9 +194,10 @@ Hier sind alle verfügbaren Standard-Felder:
 | `title` | Titel | Name der Veranstaltung |
 | `start_date` | Startdatum | Beginn (YYYY-MM-DD) |
 | `end_date` | Enddatum | Ende (YYYY-MM-DD) |
-| `time` | Uhrzeit | Uhrzeit (HH:MM) |
-| `start_time` | Startzeit | Startzeit (HH:MM), z. B. aus `18:00-20:00` |
-| `end_time` | Endzeit | Endzeit (HH:MM), z. B. aus `18:00-20:00` |
+| `time` | Uhrzeit | Originale Zeitangabe aus der Quelle (z. B. `16 - 17 Uhr telefonisch`) |
+| `start_time` | Startzeit | Strukturierte Startzeit (HH:MM), z. B. `16:00` |
+| `end_time` | Endzeit | Strukturierte Endzeit (HH:MM), z. B. `17:00` |
+| `zeit_kommentar` | ZeitKommentar | Zusatz zur Zeitangabe, z. B. `telefonisch`, `persönlich`, `ab` |
 | `description` | Beschreibung | Details zum Event |
 | `location_name` | Ort | Veranstaltungsort |
 | `location_postal_code` | PLZ | Postleitzahl |

@@ -30,6 +30,51 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(pipeline.split_time_range("18:00"), ("18:00", ""))
         self.assertEqual(pipeline.split_time_range(""), ("", ""))
 
+    def test_parse_load_data_time_refines_common_patterns(self) -> None:
+        cases = [
+            ("18-20:30 Uhr", ("18:00", "20:30", "")),
+            ("15 - 16 Uhr", ("15:00", "16:00", "")),
+            ("16 - 17 Uhr telefonisch", ("16:00", "17:00", "telefonisch")),
+            ("17 - 18 Uhr persönlich", ("17:00", "18:00", "persönlich")),
+            ("16-17 Uhr telefonisch", ("16:00", "17:00", "telefonisch")),
+        ]
+        for raw, expected in cases:
+            parsed = pipeline.parse_load_data_time(raw)
+            self.assertEqual(parsed["time"], raw)
+            self.assertEqual((parsed["start_time"], parsed["end_time"], parsed["zeit_kommentar"]), expected)
+
+    def test_parse_load_data_time_supports_bis_and_single_with_prefix(self) -> None:
+        parsed_range = pipeline.parse_load_data_time("15 bis 16 Uhr")
+        self.assertEqual(parsed_range["start_time"], "15:00")
+        self.assertEqual(parsed_range["end_time"], "16:00")
+        self.assertEqual(parsed_range["zeit_kommentar"], "")
+
+        parsed_range_zu = pipeline.parse_load_data_time("15 bis zu 16 Uhr")
+        self.assertEqual(parsed_range_zu["start_time"], "15:00")
+        self.assertEqual(parsed_range_zu["end_time"], "16:00")
+        self.assertEqual(parsed_range_zu["zeit_kommentar"], "")
+
+        parsed_single = pipeline.parse_load_data_time("ab 18 Uhr")
+        self.assertEqual(parsed_single["start_time"], "18:00")
+        self.assertEqual(parsed_single["end_time"], "")
+        self.assertEqual(parsed_single["zeit_kommentar"], "ab")
+
+    def test_parse_load_data_time_supports_dot_time_and_plus_separator(self) -> None:
+        parsed_dot = pipeline.parse_load_data_time("17.30 Uhr")
+        self.assertEqual(parsed_dot["start_time"], "17:30")
+        self.assertEqual(parsed_dot["end_time"], "")
+
+        parsed_plus = pipeline.parse_load_data_time("14:30 + 16:30 Uhr")
+        self.assertEqual(parsed_plus["start_time"], "14:30")
+        self.assertEqual(parsed_plus["end_time"], "16:30")
+        self.assertEqual(parsed_plus["zeit_kommentar"], "")
+
+    def test_parse_load_data_time_without_explicit_time_keeps_comment(self) -> None:
+        parsed = pipeline.parse_load_data_time("ganztägig außerhalb der Gottesdienstzeiten")
+        self.assertEqual(parsed["start_time"], "")
+        self.assertEqual(parsed["end_time"], "")
+        self.assertEqual(parsed["zeit_kommentar"], "ganztägig außerhalb der Gottesdienstzeiten")
+
     def test_normalize_record_splits_load_data_time_range(self) -> None:
         cfg = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         record = {
@@ -42,6 +87,21 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(normalized["time"], "18:00-20:00")
         self.assertEqual(normalized["start_time"], "18:00")
         self.assertEqual(normalized["end_time"], "20:00")
+        self.assertEqual(normalized["zeit_kommentar"], "")
+
+    def test_normalize_record_extracts_zeit_kommentar(self) -> None:
+        cfg = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        record = {
+            "id": "x2",
+            "titel": "Sprechstunde",
+            "von": "18.02.2026",
+            "zeit": "16 - 17 Uhr telefonisch",
+        }
+        normalized = pipeline.normalize_record(record, "loadData_20307012.json", cfg)
+        self.assertEqual(normalized["time"], "16 - 17 Uhr telefonisch")
+        self.assertEqual(normalized["start_time"], "16:00")
+        self.assertEqual(normalized["end_time"], "17:00")
+        self.assertEqual(normalized["zeit_kommentar"], "telefonisch")
 
     def test_normalize_record_splits_jsonld_time_range(self) -> None:
         cfg = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
@@ -55,6 +115,7 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(normalized["time"], "18:00-20:00")
         self.assertEqual(normalized["start_time"], "18:00")
         self.assertEqual(normalized["end_time"], "20:00")
+        self.assertEqual(normalized["zeit_kommentar"], "")
 
     def test_apply_replacements_exact_case_insensitive(self) -> None:
         records = [{"location_name": "Ort siehe Beschreibung"}]
