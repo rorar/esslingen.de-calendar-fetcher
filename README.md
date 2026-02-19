@@ -37,13 +37,13 @@ Shell-neutral ohne Aktivierung:
 Optional für DNS-/Anti-Bot-Workarounds das zusätzliche Backend installieren:
 
 ```bash
-python3 -m pip install stealth_requests
+.venv/bin/python -m pip install stealth_requests
 ```
 
 Optional für CSV-Linting:
 
 ```bash
-python3 -m pip install frictionless
+.venv/bin/python -m pip install frictionless
 ```
 
 Hinweis: Wenn Installation wegen DNS fehlschlägt, funktionieren Downloads weiterhin über `curl` oder `urllib`.
@@ -390,7 +390,15 @@ python3 main.py --lint-csv --lint-output-dir output --lint-recursive
 CSV-Linting für eine einzelne Datei:
 
 ```bash
-python3 main.py --lint-csv --lint-csv-file output/loadData_20307012_csv_20260218_130000.csv
+python3 main.py --lint-csv --lint-csv-file output/loadData_20307012_csv_<TIMESTAMP>.csv
+```
+
+CSV-Linting für die zuletzt erzeugten CSV-Dateien:
+
+```bash
+python3 main.py --lint-csv \
+  --lint-csv-file "$(ls -t output/loadData_20307012_csv_*.csv | head -n 1)" \
+  --lint-csv-file "$(ls -t output/jsonld_20307012_generated_csv_*.csv | head -n 1)"
 ```
 
 CSV-Linting mit Header-Schema-Check:
@@ -425,6 +433,7 @@ python3 app/process_data_pipeline.py --config config/processing_config.json
   - scannt `export.output_dir` aus der Config nach `*.csv`.
   - validiert strukturell (Frictionless Auto-Erkennung für CSV-Dialekt).
   - Delimiter/Encoding aus Config werden nur im strikten Modus erzwungen.
+  - berücksichtigt auch ältere Historien-Dateien im `output/`-Ordner.
 - Optional:
   - `--schema-check` bzw. `--lint-schema-check`: erwartete Header aus Schema/Config prüfen.
   - `--strict-config` bzw. `--lint-strict-config`: Config-Dialekt erzwingen und Schema-Check aktivieren.
