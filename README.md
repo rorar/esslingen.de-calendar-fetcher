@@ -18,11 +18,27 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 ### Copy/Paste Ablauf
 
+Repository Herunterladen:
 ```bash
 git clone https://github.com/rorar/esslingen.de-calendar-fetcher.git
 cd esslingen.de-calendar-fetcher
+``` 
+*Alternative per SSH:*
+
+```bash
+git clone git@github.com:rorar/esslingen.de-calendar-fetcher.git
+cd esslingen.de-calendar-fetcher
+```
+
+Python-Umgebung einrichten und Abhängigkeiten installieren:
+```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+```
+
+Programm ausführen inkl. Check-up, Filter-Refresh, Daten-Download, Pre-/Post-Processing und CSV-Linting:
+
+```bash
 python3 main.py --doctor
 python3 main.py --update-filters
 python3 main.py --list-filters
@@ -32,12 +48,7 @@ python3 main.py --postprocess --from-boilerplate
 python3 main.py --lint-csv --lint-recursive
 ```
 
-Alternative per SSH:
 
-```bash
-git clone git@github.com:rorar/esslingen.de-calendar-fetcher.git
-cd esslingen.de-calendar-fetcher
-```
 
 ### Wichtige Varianten
 
