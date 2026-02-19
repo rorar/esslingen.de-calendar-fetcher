@@ -50,6 +50,13 @@
       }
     ]
   },
+  "selection": {
+    "enabled": false,
+    "ids": [],
+    "titles": [],
+    "urls": [],
+    "case_sensitive": false
+  },
   "export": {
     "enabled": true,
     "_notes_formats": [

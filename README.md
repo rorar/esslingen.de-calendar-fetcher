@@ -326,19 +326,28 @@ python3 main.py --preprocess
 python3 main.py --postprocess
 ```
 
-14. Post-Processing mit eigener Config über `main.py`
+14. Post-Processing mit Event-Auswahl (ID/Titel/URL; einzeln oder Liste)
+
+```bash
+python3 main.py --postprocess --event-id 523253141860,523253151003
+python3 main.py --postprocess --event-title "Iftar für Frauen"
+python3 main.py --postprocess --event-url "https://www.esslingen.de/frauenwochen"
+python3 main.py --postprocess --event-id 523253141860 --event-id 523253151003
+```
+
+15. Post-Processing mit eigener Config über `main.py`
 
 ```bash
 python3 main.py --postprocess --process-config config/processing_config.json
 ```
 
-15. Download + Post-Processing in einem Lauf
+16. Download + Post-Processing in einem Lauf
 
 ```bash
 python3 main.py --profile frauentage --postprocess
 ```
 
-16. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
+17. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
 
 ```bash
 python3 main.py --preprocess
@@ -348,7 +357,7 @@ python3 main.py --preprocess
 python3 main.py --postprocess --from-boilerplate
 ```
 
-17. CSV-Linting der Exportdateien (Frictionless)
+18. CSV-Linting der Exportdateien (Frictionless)
 
 ```bash
 python3 main.py --lint-csv
@@ -360,6 +369,7 @@ python3 main.py --lint-csv
 python3 app/fetch_structured_data.py --series-id=-1 --anz=-1 --backend auto
 python3 app/fetch_structured_data.py --series-id=330100 --anz=-1 --backend stealth
 python3 app/fetch_filter_options.py --backend auto
+python3 app/postprocess_output.py --config config/processing_config.json --event-id 523253141860,523253151003
 ```
 
 ## Verarbeitung und Export (Pre-/Post-Processing)
@@ -558,6 +568,13 @@ Wichtige Optionen in der Config:
   - `input.files` (Rohdaten-Dateien für `raw`)
   - `input.boilerplate_dir` (Quelle für Runtime-Snapshots `boilerplate_*.json`)
   - `input.boilerplate_files` (optionale explizite Dateiliste statt `boilerplate_dir`)
+- Event-Auswahl:
+  - `selection.enabled`
+  - `selection.ids` (Liste von Event-IDs)
+  - `selection.titles` (Liste von Event-Titeln)
+  - `selection.urls` (Liste von Event-Links)
+  - `selection.case_sensitive` (Groß-/Kleinschreibung für Titel/URL)
+  - Matching-Logik: ODER über aktive Listen (`id` ODER `title` ODER `url`)
 - Schema:
   - `schema.enabled`
   - `schema.file` (im Projekt standardmäßig `config/schema/canonical_event_v1.json`; leer = automatische Datei unter `output/boilerplate/schema-boilerplates/`)
@@ -611,6 +628,13 @@ PROCESS_REPLACEMENTS_ENABLED=true \
 PROCESS_REPLACEMENTS_RULES='[{"field":"location_name","search":"Ort siehe Beschreibung","replace":"Kommunales Kino","mode":"exact","case_sensitive":false}]' \
 python3 main.py --postprocess
 
+# Nur bestimmte Events verarbeiten (ID/Titel/URL)
+PROCESS_SELECTION_ENABLED=true \
+PROCESS_SELECTION_IDS='523253141860,523253151003' \
+PROCESS_SELECTION_TITLES='Iftar für Frauen' \
+PROCESS_SELECTION_URLS='https://www.esslingen.de/frauenwochen' \
+python3 main.py --postprocess
+
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
 
@@ -641,6 +665,11 @@ Unterstuetzte ENV-Keys:
   - `PROCESS_CLEAN_TRIM_WHITESPACE`
   - `PROCESS_REPLACEMENTS_ENABLED`
   - `PROCESS_REPLACEMENTS_RULES` (JSON-Array)
+  - `PROCESS_SELECTION_ENABLED`
+  - `PROCESS_SELECTION_IDS`
+  - `PROCESS_SELECTION_TITLES`
+  - `PROCESS_SELECTION_URLS`
+  - `PROCESS_SELECTION_CASE_SENSITIVE`
 - Export:
   - `PROCESS_EXPORT_FORMATS`
   - `PROCESS_EXPORT_FIELDS`

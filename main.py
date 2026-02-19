@@ -346,16 +346,40 @@ def doctor(filter_dir: Path, process_config: str) -> int:
     return 0
 
 
-def run_preprocess(config_path: str) -> int:
+def run_preprocess(
+    config_path: str,
+    event_ids: list[str] | None = None,
+    event_titles: list[str] | None = None,
+    event_urls: list[str] | None = None,
+) -> int:
     script = Path(__file__).resolve().parent / "app" / "preprocess_data.py"
-    return run_python_script(script, ["--config", config_path])
+    args = ["--config", config_path]
+    for event_id in event_ids or []:
+        args.extend(["--event-id", event_id])
+    for event_title in event_titles or []:
+        args.extend(["--event-title", event_title])
+    for event_url in event_urls or []:
+        args.extend(["--event-url", event_url])
+    return run_python_script(script, args)
 
 
-def run_postprocess(config_path: str, from_boilerplate: bool = False) -> int:
+def run_postprocess(
+    config_path: str,
+    from_boilerplate: bool = False,
+    event_ids: list[str] | None = None,
+    event_titles: list[str] | None = None,
+    event_urls: list[str] | None = None,
+) -> int:
     script = Path(__file__).resolve().parent / "app" / "postprocess_output.py"
     args = ["--config", config_path]
     if from_boilerplate:
         args.append("--from-boilerplate")
+    for event_id in event_ids or []:
+        args.extend(["--event-id", event_id])
+    for event_title in event_titles or []:
+        args.extend(["--event-title", event_title])
+    for event_url in event_urls or []:
+        args.extend(["--event-url", event_url])
     return run_python_script(script, args)
 
 
@@ -622,6 +646,24 @@ def main() -> int:
         help="Run postprocessing via app/postprocess_output.py",
     )
     parser.add_argument(
+        "--event-id",
+        action="append",
+        default=[],
+        help="Event-ID Filter für Pre-/Post-Processing (wiederholbar; Komma-Listen erlaubt).",
+    )
+    parser.add_argument(
+        "--event-title",
+        action="append",
+        default=[],
+        help="Event-Titel Filter für Pre-/Post-Processing (wiederholbar; Komma-Listen erlaubt).",
+    )
+    parser.add_argument(
+        "--event-url",
+        action="append",
+        default=[],
+        help="Event-URL/Link Filter für Pre-/Post-Processing (wiederholbar; Komma-Listen erlaubt).",
+    )
+    parser.add_argument(
         "--lint-csv",
         action="store_true",
         help="Run CSV lint via app/lint_csv.py (Frictionless).",
@@ -713,12 +755,23 @@ def main() -> int:
             return rc
 
     if args.preprocess:
-        rc = run_preprocess(args.process_config)
+        rc = run_preprocess(
+            args.process_config,
+            event_ids=args.event_id,
+            event_titles=args.event_title,
+            event_urls=args.event_url,
+        )
         if rc != 0:
             return rc
 
     if args.postprocess:
-        rc = run_postprocess(args.process_config, from_boilerplate=args.from_boilerplate)
+        rc = run_postprocess(
+            args.process_config,
+            from_boilerplate=args.from_boilerplate,
+            event_ids=args.event_id,
+            event_titles=args.event_title,
+            event_urls=args.event_url,
+        )
         if rc != 0:
             return rc
 

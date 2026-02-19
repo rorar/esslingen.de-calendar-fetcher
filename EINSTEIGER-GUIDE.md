@@ -159,6 +159,20 @@ Wenn in den Quelldaten `Ort siehe Beschreibung` steht, kannst du das automatisch
 }
 ```
 
+**Beispiel: Nur bestimmte Events verarbeiten (ID/Titel/Link)**
+```json
+"selection": {
+  "enabled": true,
+  "ids": ["523253141860", "523253151003"],
+  "titles": ["Iftar für Frauen"],
+  "urls": ["https://www.esslingen.de/frauenwochen"],
+  "case_sensitive": false
+}
+```
+Wenn mehrere Listen gesetzt sind, gilt eine ODER-Logik (ID oder Titel oder URL).
+Du kannst alternativ auch per CLI filtern:
+`python3 main.py --postprocess --event-id 523253141860,523253151003`
+
 Änderungen werden beim nächsten Aufruf mit `--postprocess` sofort wirksam.
 
 ---

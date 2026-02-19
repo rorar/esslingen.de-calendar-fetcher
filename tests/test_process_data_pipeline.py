@@ -90,6 +90,32 @@ class TestProcessDataPipeline(unittest.TestCase):
         updated = pipeline.apply_replacements(records, cfg)
         self.assertEqual(updated[0]["location_name"], "Kommunales Kino")
 
+    def test_apply_event_selection_filters_by_id(self) -> None:
+        records = [
+            {"id": "1", "title": "A", "url": "https://example.org/1"},
+            {"id": "2", "title": "B", "url": "https://example.org/2"},
+        ]
+        cfg = {"enabled": True, "ids": ["2"], "titles": [], "urls": [], "case_sensitive": False}
+        filtered = pipeline.apply_event_selection(records, cfg)
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["id"], "2")
+
+    def test_apply_event_selection_filters_by_title_or_url(self) -> None:
+        records = [
+            {"id": "1", "title": "Alpha", "url": "https://example.org/a"},
+            {"id": "2", "title": "Beta", "url": "https://example.org/b"},
+            {"id": "3", "title": "Gamma", "url": "https://example.org/c"},
+        ]
+        cfg = {
+            "enabled": True,
+            "ids": [],
+            "titles": ["beta"],
+            "urls": ["https://example.org/c"],
+            "case_sensitive": False,
+        }
+        filtered = pipeline.apply_event_selection(records, cfg)
+        self.assertEqual([item["id"] for item in filtered], ["2", "3"])
+
     def test_env_overrides_for_formats_and_csv_options(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         with patch.dict(
@@ -176,6 +202,27 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertTrue(updated["replacements"]["enabled"])
         self.assertEqual(len(updated["replacements"]["rules"]), 1)
         self.assertEqual(updated["replacements"]["rules"][0]["field"], "location_name")
+
+    def test_env_overrides_for_selection(self) -> None:
+        base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        with patch.dict(
+            os.environ,
+            {
+                "PROCESS_SELECTION_ENABLED": "true",
+                "PROCESS_SELECTION_IDS": "1,2",
+                "PROCESS_SELECTION_TITLES": "Alpha,Beta",
+                "PROCESS_SELECTION_URLS": "https://example.org/a,https://example.org/b",
+                "PROCESS_SELECTION_CASE_SENSITIVE": "false",
+            },
+            clear=False,
+        ):
+            updated = pipeline.apply_env_overrides(base)
+
+        self.assertTrue(updated["selection"]["enabled"])
+        self.assertEqual(updated["selection"]["ids"], ["1", "2"])
+        self.assertEqual(updated["selection"]["titles"], ["Alpha", "Beta"])
+        self.assertEqual(updated["selection"]["urls"], ["https://example.org/a", "https://example.org/b"])
+        self.assertFalse(updated["selection"]["case_sensitive"])
 
     def test_run_pipeline_creates_boilerplate_and_split_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -394,6 +441,52 @@ class TestProcessDataPipeline(unittest.TestCase):
             csv_text = csv_file.read_text(encoding="utf-8")
             self.assertIn("Kommunales Kino", csv_text)
             self.assertNotIn("Ort siehe Beschreibung", csv_text)
+
+    def test_run_pipeline_applies_selection_in_raw_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            in_dir = root / "in"
+            out_dir = root / "out"
+            in_dir.mkdir(parents=True, exist_ok=True)
+
+            load_data_path = in_dir / "loadData_20307012.json"
+            load_data_path.write_text(
+                json.dumps(
+                    [
+                        {"id": "1", "titel": "Event A", "von": "18.02.2026", "location": "Ort A"},
+                        {"id": "2", "titel": "Event B", "von": "19.02.2026", "location": "Ort B"},
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = pipeline.deep_merge_dict(
+                pipeline.DEFAULT_CONFIG,
+                {
+                    "input": {"files": [str(load_data_path)]},
+                    "selection": {
+                        "enabled": True,
+                        "ids": ["2"],
+                        "titles": [],
+                        "urls": [],
+                        "case_sensitive": False,
+                    },
+                    "export": {
+                        "output_dir": str(out_dir),
+                        "formats": ["csv"],
+                        "rows_per_file": {"enabled": False, "value": 1000},
+                    },
+                },
+            )
+            pipeline.normalize_csv_options(cfg)
+            written = pipeline.run_pipeline(cfg, timestamp="20260218_152000")
+
+            self.assertEqual(len(written["csv"]), 1)
+            csv_file = out_dir / "loadData_20307012_csv_20260218_152000.csv"
+            csv_text = csv_file.read_text(encoding="utf-8")
+            self.assertIn("Event B", csv_text)
+            self.assertNotIn("Event A", csv_text)
 
     def test_run_pipeline_from_boilerplate_exports_without_rewriting_boilerplate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

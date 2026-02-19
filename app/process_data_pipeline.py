@@ -53,6 +53,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "enabled": False,
         "rules": [],
     },
+    "selection": {
+        "enabled": False,
+        "ids": [],
+        "titles": [],
+        "urls": [],
+        "case_sensitive": False,
+    },
     "export": {
         "enabled": True,
         "formats": ["csv", "xml"],
@@ -254,6 +261,60 @@ def ensure_replacements_config(config: dict[str, Any]) -> None:
     config["replacements"] = replacements_cfg
 
 
+def ensure_selection_config(config: dict[str, Any]) -> None:
+    selection_cfg = config.get("selection")
+    if not isinstance(selection_cfg, dict):
+        selection_cfg = {}
+
+    enabled_raw = selection_cfg.get("enabled", False)
+    case_sensitive_raw = selection_cfg.get("case_sensitive", False)
+    if isinstance(enabled_raw, str):
+        enabled = parse_bool(enabled_raw)
+    else:
+        enabled = bool(enabled_raw)
+    if isinstance(case_sensitive_raw, str):
+        case_sensitive = parse_bool(case_sensitive_raw)
+    else:
+        case_sensitive = bool(case_sensitive_raw)
+
+    ids_raw = selection_cfg.get("ids", [])
+    titles_raw = selection_cfg.get("titles", [])
+    urls_raw = selection_cfg.get("urls", [])
+    if not isinstance(ids_raw, list):
+        raise ValueError("selection.ids muss eine Liste sein")
+    if not isinstance(titles_raw, list):
+        raise ValueError("selection.titles muss eine Liste sein")
+    if not isinstance(urls_raw, list):
+        raise ValueError("selection.urls muss eine Liste sein")
+
+    def normalize_values(values: list[Any]) -> list[str]:
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = str(value).strip()
+            if not text:
+                continue
+            if text not in seen:
+                seen.add(text)
+                deduped.append(text)
+        return deduped
+
+    ids = normalize_values(ids_raw)
+    titles = normalize_values(titles_raw)
+    urls = normalize_values(urls_raw)
+
+    # If selectors are provided, selection should apply automatically.
+    if ids or titles or urls:
+        enabled = True
+
+    selection_cfg["enabled"] = enabled
+    selection_cfg["ids"] = ids
+    selection_cfg["titles"] = titles
+    selection_cfg["urls"] = urls
+    selection_cfg["case_sensitive"] = case_sensitive
+    config["selection"] = selection_cfg
+
+
 def parse_list(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
@@ -316,6 +377,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     ensure_rows_per_file_config(updated["export"])
     ensure_schema_config(updated)
     ensure_replacements_config(updated)
+    ensure_selection_config(updated)
 
     if value := env.get("PROCESS_INPUT_MODE"):
         updated["input"]["mode"] = value.strip().lower()
@@ -351,6 +413,16 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(loaded_rules, list):
             raise ValueError("PROCESS_REPLACEMENTS_RULES muss ein JSON-Array sein")
         updated["replacements"]["rules"] = loaded_rules
+    if value := env.get("PROCESS_SELECTION_ENABLED"):
+        updated["selection"]["enabled"] = parse_bool(value)
+    if value := env.get("PROCESS_SELECTION_IDS"):
+        updated["selection"]["ids"] = parse_list(value)
+    if value := env.get("PROCESS_SELECTION_TITLES"):
+        updated["selection"]["titles"] = parse_list(value)
+    if value := env.get("PROCESS_SELECTION_URLS"):
+        updated["selection"]["urls"] = parse_list(value)
+    if value := env.get("PROCESS_SELECTION_CASE_SENSITIVE"):
+        updated["selection"]["case_sensitive"] = parse_bool(value)
 
     if value := env.get("PROCESS_EXPORT_FORMATS"):
         updated["export"]["formats"] = [fmt.lower() for fmt in parse_list(value)]
@@ -394,6 +466,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     ensure_rows_per_file_config(updated["export"])
     ensure_schema_config(updated)
     ensure_replacements_config(updated)
+    ensure_selection_config(updated)
     normalize_input_mode(updated["input"])
     updated["export"]["line_ending"] = decode_escapes(str(updated["export"]["line_ending"]))
     normalize_csv_options(updated)
@@ -411,6 +484,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
     ensure_rows_per_file_config(merged["export"])
     ensure_schema_config(merged)
     ensure_replacements_config(merged)
+    ensure_selection_config(merged)
     normalize_input_mode(merged["input"])
     return apply_env_overrides(merged)
 
@@ -717,6 +791,43 @@ def apply_replacements(records: list[dict[str, str]], replacements_cfg: dict[str
         updated_records.append(updated)
 
     return updated_records
+
+
+def _match_text_in_values(value: str, expected_values: list[str], case_sensitive: bool) -> bool:
+    if case_sensitive:
+        return value in expected_values
+    value_folded = value.casefold()
+    expected_folded = [item.casefold() for item in expected_values]
+    return value_folded in expected_folded
+
+
+def record_matches_selection(record: dict[str, str], selection_cfg: dict[str, Any]) -> bool:
+    if not selection_cfg.get("enabled", False):
+        return True
+
+    ids = selection_cfg.get("ids", [])
+    titles = selection_cfg.get("titles", [])
+    urls = selection_cfg.get("urls", [])
+    case_sensitive = bool(selection_cfg.get("case_sensitive", False))
+
+    checks: list[bool] = []
+
+    if isinstance(ids, list) and ids:
+        checks.append(str(record.get("id", "")).strip() in [str(item).strip() for item in ids])
+    if isinstance(titles, list) and titles:
+        checks.append(_match_text_in_values(str(record.get("title", "")).strip(), [str(item).strip() for item in titles], case_sensitive))
+    if isinstance(urls, list) and urls:
+        checks.append(_match_text_in_values(str(record.get("url", "")).strip(), [str(item).strip() for item in urls], case_sensitive))
+
+    if not checks:
+        return True
+    return any(checks)
+
+
+def apply_event_selection(records: list[dict[str, str]], selection_cfg: dict[str, Any]) -> list[dict[str, str]]:
+    if not selection_cfg.get("enabled", False):
+        return records
+    return [record for record in records if record_matches_selection(record, selection_cfg)]
 
 
 def preprocess_records(records: list[dict[str, str]], preprocess_cfg: dict[str, Any]) -> list[dict[str, str]]:
@@ -1148,6 +1259,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
     normalize_input_mode(config["input"])
     ensure_schema_config(config)
     ensure_replacements_config(config)
+    ensure_selection_config(config)
     output_dir = Path(str(config["export"]["output_dir"]))
     output_dir.mkdir(parents=True, exist_ok=True)
     encoding = str(config["export"]["encoding"])
@@ -1237,6 +1349,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
             if source_schema_path is not None:
                 written["source_schema_boilerplate"].append(source_schema_path)
             records = normalize_source_records(raw_records, input_file.name, config)
+            records = apply_event_selection(records, config.get("selection", {}))
             written["boilerplate"].append(write_boilerplate(output_dir, source_name, records, encoding, line_ending))
             export_source_records(source_name, records)
     else:
@@ -1247,6 +1360,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
 
             source_name, records = read_boilerplate_records(boilerplate_file)
             records = apply_replacements(records, config.get("replacements", {}))
+            records = apply_event_selection(records, config.get("selection", {}))
             written["boilerplate_input"].append(boilerplate_file)
             export_source_records(source_name, records)
 

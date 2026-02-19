@@ -171,6 +171,33 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(script_path.name, "preprocess_data.py")
         self.assertEqual(args, ["--config", "config/processing_config.json"])
 
+    def test_run_preprocess_with_event_filters_uses_wrapper_flags(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_preprocess(
+                "config/processing_config.json",
+                event_ids=["1", "2,3"],
+                event_titles=["Titel A"],
+                event_urls=["https://example.org/a"],
+            )
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "preprocess_data.py")
+        self.assertEqual(
+            args,
+            [
+                "--config",
+                "config/processing_config.json",
+                "--event-id",
+                "1",
+                "--event-id",
+                "2,3",
+                "--event-title",
+                "Titel A",
+                "--event-url",
+                "https://example.org/a",
+            ],
+        )
+
     def test_run_postprocess_uses_wrapper_script(self) -> None:
         with patch("main.run_python_script", return_value=0) as mocked:
             rc = main.run_postprocess("config/processing_config.json")
@@ -178,6 +205,33 @@ class TestMainProfiles(unittest.TestCase):
         script_path, args = mocked.call_args.args
         self.assertEqual(script_path.name, "postprocess_output.py")
         self.assertEqual(args, ["--config", "config/processing_config.json"])
+
+    def test_run_postprocess_with_event_filters_uses_wrapper_flags(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_postprocess(
+                "config/processing_config.json",
+                from_boilerplate=True,
+                event_ids=["1"],
+                event_titles=["Titel A,Titel B"],
+                event_urls=["https://example.org/a"],
+            )
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "postprocess_output.py")
+        self.assertEqual(
+            args,
+            [
+                "--config",
+                "config/processing_config.json",
+                "--from-boilerplate",
+                "--event-id",
+                "1",
+                "--event-title",
+                "Titel A,Titel B",
+                "--event-url",
+                "https://example.org/a",
+            ],
+        )
 
     def test_run_postprocess_from_boilerplate_uses_wrapper_flag(self) -> None:
         with patch("main.run_python_script", return_value=0) as mocked:
@@ -229,7 +283,12 @@ class TestMainProfiles(unittest.TestCase):
             rc = main.main()
 
         self.assertEqual(rc, 0)
-        mocked_pre.assert_called_once_with("config/processing_config.json")
+        mocked_pre.assert_called_once_with(
+            "config/processing_config.json",
+            event_ids=[],
+            event_titles=[],
+            event_urls=[],
+        )
         mocked_download.assert_not_called()
         mocked_profile.assert_not_called()
 
@@ -245,7 +304,13 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(rc, 0)
         mocked_profile.assert_called_once()
         mocked_download.assert_called_once()
-        mocked_post.assert_called_once_with("x.json", from_boilerplate=False)
+        mocked_post.assert_called_once_with(
+            "x.json",
+            from_boilerplate=False,
+            event_ids=[],
+            event_titles=[],
+            event_urls=[],
+        )
 
     def test_main_passes_backend_to_download(self) -> None:
         profile_cfg = {"series_ids": ["330100"], "anz": "-1", "cat_ids": []}
@@ -269,7 +334,43 @@ class TestMainProfiles(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         mocked_download.assert_not_called()
-        mocked_post.assert_called_once_with("config/processing_config.json", from_boilerplate=True)
+        mocked_post.assert_called_once_with(
+            "config/processing_config.json",
+            from_boilerplate=True,
+            event_ids=[],
+            event_titles=[],
+            event_urls=[],
+        )
+
+    def test_main_postprocess_passes_event_filters(self) -> None:
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "main.py",
+                    "--postprocess",
+                    "--event-id",
+                    "523253141860,523253151003",
+                    "--event-title",
+                    "Iftar für Frauen",
+                    "--event-url",
+                    "https://www.esslingen.de/frauenwochen",
+                ],
+            ),
+            patch("main.run_postprocess", return_value=0) as mocked_post,
+            patch("main.run_download") as mocked_download,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_not_called()
+        mocked_post.assert_called_once_with(
+            "config/processing_config.json",
+            from_boilerplate=False,
+            event_ids=["523253141860,523253151003"],
+            event_titles=["Iftar für Frauen"],
+            event_urls=["https://www.esslingen.de/frauenwochen"],
+        )
 
     def test_main_lint_only_does_not_run_download(self) -> None:
         with (
