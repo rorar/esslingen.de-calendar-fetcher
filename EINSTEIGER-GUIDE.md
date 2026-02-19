@@ -170,6 +170,8 @@ Wenn in den Quelldaten `Ort siehe Beschreibung` steht, kannst du das automatisch
 }
 ```
 Wenn mehrere Listen gesetzt sind, gilt eine ODER-Logik (ID oder Titel oder URL).
+Bei URL-Filtern werden Detailseiten mit gleicher `nodeID` als derselbe Termin erkannt
+(z. B. `.../zmdetail/index.html?nodeID=...` und `.../zmdetail_<id>/index.html?nodeID=...`).
 Du kannst alternativ auch per CLI filtern:
 `python3 main.py --postprocess --event-id 523253141860,523253151003`
 

@@ -116,6 +116,33 @@ class TestProcessDataPipeline(unittest.TestCase):
         filtered = pipeline.apply_event_selection(records, cfg)
         self.assertEqual([item["id"] for item in filtered], ["2", "3"])
 
+    def test_extract_event_id_from_url_supports_both_detail_variants(self) -> None:
+        url_a = "https://www.esslingen.de/site/Esslingen_Layout_2022/node/20307012/zmdetail/index.html?nodeID=523253141859"
+        url_b = "https://www.esslingen.de/site/Esslingen_Layout_2022/node/20307012/zmdetail_523253141859/index.html?nodeID=523253141859"
+        self.assertEqual(pipeline.extract_event_id_from_url(url_a), "523253141859")
+        self.assertEqual(pipeline.extract_event_id_from_url(url_b), "523253141859")
+
+    def test_apply_event_selection_matches_url_variant_via_node_id(self) -> None:
+        records = [
+            {"id": "523253141859", "title": "Event X", "url": "https://www.esslingen.de/frauenwochen"},
+            {
+                "id": "523253141860",
+                "title": "Event Y",
+                "url": "https://www.esslingen.de/site/Esslingen_Layout_2022/node/20307012/zmdetail/index.html?nodeID=523253141860",
+            },
+        ]
+        cfg = {
+            "enabled": True,
+            "ids": [],
+            "titles": [],
+            "urls": [
+                "https://www.esslingen.de/site/Esslingen_Layout_2022/node/20307012/zmdetail_523253141859/index.html?nodeID=523253141859"
+            ],
+            "case_sensitive": False,
+        }
+        filtered = pipeline.apply_event_selection(records, cfg)
+        self.assertEqual([item["id"] for item in filtered], ["523253141859"])
+
     def test_env_overrides_for_formats_and_csv_options(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         with patch.dict(

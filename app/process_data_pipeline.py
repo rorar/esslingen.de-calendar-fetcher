@@ -12,6 +12,7 @@ from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlparse
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "input": {
@@ -801,6 +802,53 @@ def _match_text_in_values(value: str, expected_values: list[str], case_sensitive
     return value_folded in expected_folded
 
 
+def extract_event_id_from_url(value: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+
+    try:
+        parsed = urlparse(text)
+        for key, raw_val in parse_qsl(parsed.query, keep_blank_values=True):
+            if key.casefold() == "nodeid":
+                candidate = raw_val.strip()
+                if candidate:
+                    return candidate
+
+        path_match = re.search(r"zmdetail_(\d+)", parsed.path or "", flags=re.IGNORECASE)
+        if path_match:
+            return path_match.group(1)
+    except Exception:
+        pass
+
+    query_match = re.search(r"[?&]nodeid=(\d+)", text, flags=re.IGNORECASE)
+    if query_match:
+        return query_match.group(1)
+
+    fallback_path_match = re.search(r"zmdetail_(\d+)", text, flags=re.IGNORECASE)
+    if fallback_path_match:
+        return fallback_path_match.group(1)
+
+    return ""
+
+
+def match_url_selector(record: dict[str, str], selector_urls: list[str], case_sensitive: bool) -> bool:
+    record_url = str(record.get("url", "")).strip()
+    if record_url and _match_text_in_values(record_url, selector_urls, case_sensitive):
+        return True
+
+    selector_event_ids = [extract_event_id_from_url(value) for value in selector_urls]
+    selector_event_ids = [value for value in selector_event_ids if value]
+    if not selector_event_ids:
+        return False
+
+    record_id = str(record.get("id", "")).strip()
+    record_event_id = record_id if record_id else extract_event_id_from_url(record_url)
+    if not record_event_id:
+        return False
+    return record_event_id in selector_event_ids
+
+
 def record_matches_selection(record: dict[str, str], selection_cfg: dict[str, Any]) -> bool:
     if not selection_cfg.get("enabled", False):
         return True
@@ -817,7 +865,7 @@ def record_matches_selection(record: dict[str, str], selection_cfg: dict[str, An
     if isinstance(titles, list) and titles:
         checks.append(_match_text_in_values(str(record.get("title", "")).strip(), [str(item).strip() for item in titles], case_sensitive))
     if isinstance(urls, list) and urls:
-        checks.append(_match_text_in_values(str(record.get("url", "")).strip(), [str(item).strip() for item in urls], case_sensitive))
+        checks.append(match_url_selector(record, [str(item).strip() for item in urls], case_sensitive))
 
     if not checks:
         return True

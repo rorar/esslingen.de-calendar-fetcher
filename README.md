@@ -575,6 +575,7 @@ Wichtige Optionen in der Config:
   - `selection.urls` (Liste von Event-Links)
   - `selection.case_sensitive` (Groß-/Kleinschreibung für Titel/URL)
   - Matching-Logik: ODER über aktive Listen (`id` ODER `title` ODER `url`)
+  - URL-Varianten mit gleicher `nodeID` werden gleich behandelt (z. B. `.../zmdetail/index.html?nodeID=...` und `.../zmdetail_<id>/index.html?nodeID=...`)
 - Schema:
   - `schema.enabled`
   - `schema.file` (im Projekt standardmäßig `config/schema/canonical_event_v1.json`; leer = automatische Datei unter `output/boilerplate/schema-boilerplates/`)
