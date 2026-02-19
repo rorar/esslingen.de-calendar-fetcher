@@ -6,6 +6,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 | Phase | Zweck | Befehl | Ergebnis | Internet |
 |---|---|---|---|---|
+| -1. Clone | Repository lokal holen | `git clone https://github.com/rorar/esslingen.de-calendar-fetcher.git && cd esslingen.de-calendar-fetcher` | Projekt lokal vorhanden | Ja |
 | 0. Setup | Laufzeit vorbereiten | `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt` | Python-Umgebung bereit | Nein |
 | 1. Doctor | Umgebung prüfen | `python3 main.py --doctor` | Check für Python, Config, Ordner, DNS, optionale Pakete | Teilweise |
 | 2. Filter-Refresh | aktuelle Labels/IDs holen | `python3 main.py --update-filters` | `filter/q.sammelbegrif.id.json`, `filter/q.kat.id.json` | Ja |
@@ -18,6 +19,8 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 ### Copy/Paste Ablauf
 
 ```bash
+git clone https://github.com/rorar/esslingen.de-calendar-fetcher.git
+cd esslingen.de-calendar-fetcher
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 python3 main.py --doctor
@@ -27,6 +30,13 @@ python3 main.py --profile DOWNLOAD_FRAUENTAGE
 python3 main.py --preprocess
 python3 main.py --postprocess --from-boilerplate
 python3 main.py --lint-csv --lint-recursive
+```
+
+Alternative per SSH:
+
+```bash
+git clone git@github.com:rorar/esslingen.de-calendar-fetcher.git
+cd esslingen.de-calendar-fetcher
 ```
 
 ### Wichtige Varianten
