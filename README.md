@@ -20,6 +20,19 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
+Fish-Shell:
+
+```fish
+source .venv/bin/activate.fish
+python3 -m pip install -r requirements.txt
+```
+
+Shell-neutral ohne Aktivierung:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+```
+
 Optional für DNS-/Anti-Bot-Workarounds das zusätzliche Backend installieren:
 
 ```bash
@@ -56,6 +69,7 @@ Rohdaten in `structured-data/` oder Runtime-Snapshots in `output/boilerplate/run
 
 **Hinweis:** 
 Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
+Automatische Refreshes bei Label-Auflösung laufen intern leise; der explizite Aufruf `--update-filters` zeigt den vollen Output.
 
 ### Schritt 2: Profil ausführen
 
@@ -100,6 +114,11 @@ python3 main.py --profile frauentage --backend auto
 - `DOWNLOAD_SAMMEL_LABEL=<LABEL[,LABEL2...]>`
 
 Unterstützte Delimiter für Multi-Werte: `,` `;` `|` `+`
+
+Hinweise:
+
+- Werte mit Delimiter-Zeichen im Label können in Quotes gesetzt werden, z. B. `"Alpha, Beta"+"C++ Kurs"`.
+- Delimiter können alternativ escaped werden, z. B. `Alpha\, Beta+C\+\+ Kurs`.
 
 ### Beispiele:
 
@@ -681,8 +700,7 @@ Das ist unkritisch, solange `curl` oder `urllib` verfügbar sind.
 Bei Bedarf nachinstallieren:
 
 ```bash
-source .venv/bin/activate
-python3 -m pip install stealth_requests
+.venv/bin/python -m pip install stealth_requests
 ```
 
 ### `curl` nicht vorhanden
@@ -719,7 +737,6 @@ Die jeweils letzte Version liegt in `structured-data/`, ältere Stände in `stru
 Installieren bei Bedarf in der VENV:
 
 ```bash
-source .venv/bin/activate
-python3 -m pip install requests
-python3 -m pip install stealth_requests
+.venv/bin/python -m pip install requests
+.venv/bin/python -m pip install stealth_requests
 ```

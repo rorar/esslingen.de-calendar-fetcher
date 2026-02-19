@@ -35,6 +35,8 @@ class TestMainProfiles(unittest.TestCase):
                         {"id": "908119", "label": "Politik · Beteiligung", "level": "katlevel1"},
                         {"id": "908120", "label": "Vorträge · Diskussion", "level": "katlevel1"},
                         {"id": "908121", "label": "Bühne · Theater", "level": "katlevel1"},
+                        {"id": "908122", "label": "Alpha, Beta", "level": "katlevel1"},
+                        {"id": "908123", "label": "C++ Kurs", "level": "katlevel1"},
                     ]
                 },
                 ensure_ascii=False,
@@ -74,6 +76,19 @@ class TestMainProfiles(unittest.TestCase):
         cfg = main.resolve_profile("DOWNLOAD_CAT_LABEL=Bühne · Theater,Bühne Theater", self.filter_dir)
         self.assertEqual(cfg["series_ids"], ["-1"])
         self.assertEqual(cfg["cat_ids"], ["908121"])
+
+    def test_advanced_cat_label_supports_quoted_values_with_delimiters(self) -> None:
+        cfg = main.resolve_profile('DOWNLOAD_CAT_LABEL="Alpha, Beta"+"C++ Kurs"', self.filter_dir)
+        self.assertEqual(cfg["series_ids"], ["-1"])
+        self.assertEqual(cfg["cat_ids"], ["908122", "908123"])
+
+    def test_split_multi_values_respects_quotes(self) -> None:
+        values = main.split_multi_values('"Alpha, Beta"+"C++ Kurs";Bühne Theater')
+        self.assertEqual(values, ["Alpha, Beta", "C++ Kurs", "Bühne Theater"])
+
+    def test_split_multi_values_supports_escaped_delimiters(self) -> None:
+        values = main.split_multi_values(r"Alpha\, Beta+C\+\+ Kurs")
+        self.assertEqual(values, ["Alpha, Beta", "C++ Kurs"])
 
     def test_advanced_sammel_id_multi_with_delimiters(self) -> None:
         cfg = main.resolve_profile("DOWNLOAD_SAMMEL_ID=330100|11602300;330100", self.filter_dir)
@@ -125,6 +140,14 @@ class TestMainProfiles(unittest.TestCase):
         script_path, args = mocked.call_args.args
         self.assertEqual(script_path.name, "fetch_filter_options.py")
         self.assertEqual(args, ["--out-dir", str(self.filter_dir), "--backend", "stealth"])
+
+    def test_update_filters_quiet_mode_adds_flag(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.update_filters(self.filter_dir, backend="auto", quiet=True)
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "fetch_filter_options.py")
+        self.assertEqual(args, ["--out-dir", str(self.filter_dir), "--backend", "auto", "--quiet"])
 
     def test_run_preprocess_uses_wrapper_script(self) -> None:
         with patch("main.run_python_script", return_value=0) as mocked:

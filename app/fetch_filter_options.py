@@ -205,6 +205,11 @@ def main() -> int:
     parser.add_argument("--url", default=CALENDAR_URL, help="Calendar page URL")
     parser.add_argument("--out-dir", default="filter", help="Output directory (default: filter)")
     parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress success output (useful for internal refresh calls).",
+    )
+    parser.add_argument(
         "--backend",
         default="auto",
         choices=["auto", "stealth", "stealth-requests", "curl", "urllib"],
@@ -245,9 +250,10 @@ def main() -> int:
     series_path.write_text(json.dumps(series_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     categories_path.write_text(json.dumps(categories_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"Download backend(s): {backend}")
-    print(f"Wrote {series_path} ({len(series_options)} items)")
-    print(f"Wrote {categories_path} ({len(category_options)} items)")
+    if not args.quiet:
+        print(f"Download backend(s): {backend}")
+        print(f"Wrote {series_path} ({len(series_options)} items)")
+        print(f"Wrote {categories_path} ({len(category_options)} items)")
     return 0
 
 

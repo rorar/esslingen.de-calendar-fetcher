@@ -41,14 +41,50 @@ def normalize_label(value: str) -> str:
 
 
 def split_multi_values(raw: str) -> list[str]:
-    values = [part.strip() for part in re.split(r"[,+;|]", raw) if part.strip()]
-    out: list[str] = []
-    for value in values:
-        if len(value) >= 2 and ((value[0] == value[-1] == '"') or (value[0] == value[-1] == "'")):
-            value = value[1:-1].strip()
-        if value:
-            out.append(value)
-    return out
+    delimiters = {",", "+", ";", "|"}
+    values: list[str] = []
+    buf: list[str] = []
+    quote_char: str | None = None
+    escape_next = False
+
+    for ch in raw:
+        if escape_next:
+            buf.append(ch)
+            escape_next = False
+            continue
+
+        if ch == "\\":
+            escape_next = True
+            continue
+
+        if quote_char is not None:
+            if ch == quote_char:
+                quote_char = None
+            else:
+                buf.append(ch)
+            continue
+
+        if ch in {"'", '"'}:
+            quote_char = ch
+            continue
+
+        if ch in delimiters:
+            token = "".join(buf).strip()
+            if token:
+                values.append(token)
+            buf = []
+            continue
+
+        buf.append(ch)
+
+    if escape_next:
+        buf.append("\\")
+
+    token = "".join(buf).strip()
+    if token:
+        values.append(token)
+
+    return values
 
 
 def unique_preserve_order(values: list[str]) -> list[str]:
@@ -87,9 +123,12 @@ def run_python_script(script_path: Path, args: list[str]) -> int:
     return completed.returncode
 
 
-def update_filters(filter_dir: Path, backend: str = "auto") -> int:
+def update_filters(filter_dir: Path, backend: str = "auto", quiet: bool = False) -> int:
     script = Path(__file__).resolve().parent / "app" / "fetch_filter_options.py"
-    return run_python_script(script, ["--out-dir", str(filter_dir), "--backend", backend])
+    args = ["--out-dir", str(filter_dir), "--backend", backend]
+    if quiet:
+        args.append("--quiet")
+    return run_python_script(script, args)
 
 
 def run_preprocess(config_path: str) -> int:
@@ -351,7 +390,7 @@ def main() -> int:
         return 1
 
     if args.update_filters:
-        rc = update_filters(filter_dir, backend=args.backend)
+        rc = update_filters(filter_dir, backend=args.backend, quiet=False)
         if rc != 0:
             return rc
 
@@ -364,7 +403,7 @@ def main() -> int:
             config = resolve_profile(
                 args.profile,
                 filter_dir,
-                updater=lambda current_filter_dir: update_filters(current_filter_dir, backend=args.backend),
+                updater=lambda current_filter_dir: update_filters(current_filter_dir, backend=args.backend, quiet=True),
             )
         except Exception as exc:
             print(str(exc))
