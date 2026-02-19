@@ -1,3 +1,6 @@
-# No external Python dependencies required.
-# Optional: `curl` for preferred download backend.
-# Fallback: built-in Python `urllib` is used automatically if `curl` is unavailable.
+# No mandatory external Python dependencies.
+# Optional download backends:
+# - `curl` as system command
+# - `stealth-requests` backend via Python package `stealth_requests`
+#   (install via `python3 -m pip install stealth_requests`)
+# Built-in fallback: Python `urllib`.

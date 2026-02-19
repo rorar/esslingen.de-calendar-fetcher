@@ -22,6 +22,14 @@ def has_curl() -> bool:
     return shutil.which("curl") is not None
 
 
+def has_stealth_requests() -> bool:
+    try:
+        import stealth_requests  # type: ignore # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 def fetch_text_with_curl(url: str) -> tuple[int, str, str]:
     proc = subprocess.run(
         ["curl", "--noproxy", "*", "-sS", url],
@@ -41,23 +49,89 @@ def fetch_text_with_urllib(url: str) -> tuple[int, str, str]:
         return 1, "", str(exc)
 
 
-def fetch_text(url: str, retries: int = 5, wait_seconds: float = 1.5) -> str:
+def fetch_text_with_stealth_requests(url: str) -> tuple[int, str, str]:
+    try:
+        import stealth_requests as stealth  # type: ignore
+    except Exception as exc:
+        return 1, "", f"stealth-requests import fehlgeschlagen: {exc}"
+
+    try:
+        response = stealth.get(url, timeout=60, impersonate="chrome")
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        text = str(getattr(response, "text", "") or "")
+        if 200 <= status_code < 400 and text:
+            return 0, text, ""
+        if status_code:
+            return 1, text, f"HTTP {status_code}"
+        return 1, text, "Unbekannter Fehler (keinen HTTP-Status erhalten)"
+    except Exception as exc:
+        return 1, "", str(exc)
+
+
+def normalize_backend_arg(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized == "stealth":
+        return "stealth-requests"
+    if normalized in {"auto", "stealth-requests", "curl", "urllib"}:
+        return normalized
+    raise ValueError(f"Unbekannter Backend-Wert: {value}")
+
+
+def resolve_backend_order(backend: str) -> list[str]:
+    normalized = normalize_backend_arg(backend)
+    order: list[str] = []
+
+    # auto: prefer stealth if installed, then curl, finally urllib
+    if normalized == "auto":
+        if has_stealth_requests():
+            order.append("stealth-requests")
+        if has_curl():
+            order.append("curl")
+        order.append("urllib")
+        return order
+
+    # explicit stealth: try stealth first, but keep operational fallbacks
+    if normalized == "stealth-requests":
+        order.append("stealth-requests")
+        if has_curl():
+            order.append("curl")
+        order.append("urllib")
+        return order
+
+    # explicit curl: try curl first, then urllib fallback
+    if normalized == "curl":
+        order.append("curl")
+        order.append("urllib")
+        return order
+
+    # explicit urllib
+    return ["urllib"]
+
+
+def fetch_with_backend(url: str, backend: str) -> tuple[int, str, str]:
+    if backend == "stealth-requests":
+        return fetch_text_with_stealth_requests(url)
+    if backend == "curl":
+        return fetch_text_with_curl(url)
+    return fetch_text_with_urllib(url)
+
+
+def fetch_text(url: str, retries: int = 5, wait_seconds: float = 1.5, backend: str = "auto") -> tuple[str, str]:
+    backend_order = resolve_backend_order(backend)
     last_err = ""
-    use_curl = has_curl()
+    last_backend = ""
     for attempt in range(1, retries + 1):
-        if use_curl:
-            returncode, stdout, stderr = fetch_text_with_curl(url)
-        else:
-            returncode, stdout, stderr = fetch_text_with_urllib(url)
-
-        if returncode == 0:
-            return stdout
-
-        last_err = stderr
+        for active_backend in backend_order:
+            returncode, stdout, stderr = fetch_with_backend(url, active_backend)
+            if returncode == 0:
+                return stdout, active_backend
+            last_backend = active_backend
+            last_err = stderr or "Unbekannter Fehler"
         if attempt < retries:
             time.sleep(wait_seconds * attempt)
 
-    raise RuntimeError(f"Download fehlgeschlagen: {url} ({last_err})")
+    backend_note = f" backend={last_backend}" if last_backend else ""
+    raise RuntimeError(f"Download fehlgeschlagen: {url} ({last_err}){backend_note}")
 
 
 def iso_from_de_date(value: object) -> str | None:
@@ -229,6 +303,12 @@ def main() -> int:
         default=[],
         help="Optional q.kat.id filter. Can be used multiple times.",
     )
+    parser.add_argument(
+        "--backend",
+        default="auto",
+        choices=["auto", "stealth", "stealth-requests", "curl", "urllib"],
+        help="Download backend (default: auto).",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -246,9 +326,11 @@ def main() -> int:
 
     try:
         all_events: list[list[object]] = []
+        used_backends: set[str] = set()
         for series_id in series_ids:
             json_url = build_json_url(series_id, args.anz, cat_ids=cat_ids)
-            json_text = fetch_text(json_url)
+            json_text, backend = fetch_text(json_url, backend=args.backend)
+            used_backends.add(backend)
             parsed = json.loads(json_text)
             if not isinstance(parsed, list):
                 raise ValueError("Unexpected JSON structure: expected a list")
@@ -256,7 +338,8 @@ def main() -> int:
 
         merged_events = merge_event_lists(all_events)
         merged_json_text = json.dumps(merged_events, ensure_ascii=False, indent=2)
-        ics_text = fetch_text(ICS_URL)
+        ics_text, ics_backend = fetch_text(ICS_URL, backend=args.backend)
+        used_backends.add(ics_backend)
     except RuntimeError as exc:
         print(str(exc))
         return 1
@@ -273,10 +356,10 @@ def main() -> int:
 
     write_history_snapshot([json_path, ics_path, jsonld_path], history_dir)
 
-    if has_curl():
-        print("Download backend: curl")
-    else:
-        print("Download backend: urllib fallback (curl nicht gefunden)")
+    ordered_used_backends = [b for b in resolve_backend_order(args.backend) if b in used_backends]
+    if not ordered_used_backends:
+        ordered_used_backends = sorted(used_backends)
+    print(f"Download backend(s): {', '.join(ordered_used_backends)}")
     print(f"Series IDs: {', '.join(series_ids)}")
     if cat_ids:
         print(f"Category IDs: {', '.join(cat_ids)}")

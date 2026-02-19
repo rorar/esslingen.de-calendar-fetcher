@@ -1,5 +1,6 @@
 import unittest
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
 
 from app import fetch_structured_data
 
@@ -32,6 +33,25 @@ class TestFetchStructuredData(unittest.TestCase):
 
         merged = fetch_structured_data.merge_event_lists([a, b])
         self.assertEqual(len(merged), 1)
+
+    @patch("app.fetch_structured_data.has_stealth_requests", return_value=True)
+    @patch("app.fetch_structured_data.has_curl", return_value=True)
+    def test_resolve_backend_order_auto_prefers_stealth_then_curl(self, _curl: object, _stealth: object) -> None:
+        order = fetch_structured_data.resolve_backend_order("auto")
+        self.assertEqual(order, ["stealth-requests", "curl", "urllib"])
+
+    @patch("app.fetch_structured_data.has_curl", return_value=True)
+    def test_resolve_backend_order_explicit_stealth_keeps_fallbacks(self, _curl: object) -> None:
+        order = fetch_structured_data.resolve_backend_order("stealth")
+        self.assertEqual(order, ["stealth-requests", "curl", "urllib"])
+
+    def test_resolve_backend_order_explicit_curl_keeps_urllib_fallback(self) -> None:
+        order = fetch_structured_data.resolve_backend_order("curl")
+        self.assertEqual(order, ["curl", "urllib"])
+
+    def test_resolve_backend_order_explicit_urllib_is_single_backend(self) -> None:
+        order = fetch_structured_data.resolve_backend_order("urllib")
+        self.assertEqual(order, ["urllib"])
 
 
 if __name__ == "__main__":

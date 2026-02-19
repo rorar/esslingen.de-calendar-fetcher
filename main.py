@@ -87,9 +87,9 @@ def run_python_script(script_path: Path, args: list[str]) -> int:
     return completed.returncode
 
 
-def update_filters(filter_dir: Path) -> int:
+def update_filters(filter_dir: Path, backend: str = "auto") -> int:
     script = Path(__file__).resolve().parent / "app" / "fetch_filter_options.py"
-    return run_python_script(script, ["--out-dir", str(filter_dir)])
+    return run_python_script(script, ["--out-dir", str(filter_dir), "--backend", backend])
 
 
 def run_preprocess(config_path: str) -> int:
@@ -255,7 +255,7 @@ def resolve_profile(
     )
 
 
-def build_fetch_command(config: dict[str, object], out_dir: str) -> list[str]:
+def build_fetch_command(config: dict[str, object], out_dir: str, backend: str = "auto") -> list[str]:
     fetch_script = Path(__file__).resolve().parent / "app" / "fetch_structured_data.py"
     cmd = [
         sys.executable,
@@ -264,6 +264,8 @@ def build_fetch_command(config: dict[str, object], out_dir: str) -> list[str]:
         str(config["anz"]),
         "--out-dir",
         out_dir,
+        "--backend",
+        backend,
     ]
 
     series_ids = config.get("series_ids", [])
@@ -279,8 +281,8 @@ def build_fetch_command(config: dict[str, object], out_dir: str) -> list[str]:
     return cmd
 
 
-def run_download(config: dict[str, object], out_dir: str) -> int:
-    cmd = build_fetch_command(config, out_dir)
+def run_download(config: dict[str, object], out_dir: str, backend: str = "auto") -> int:
+    cmd = build_fetch_command(config, out_dir, backend=backend)
     completed = subprocess.run(cmd)
     return completed.returncode
 
@@ -314,6 +316,12 @@ def main() -> int:
         help="Refresh filter mappings via app/fetch_filter_options.py",
     )
     parser.add_argument(
+        "--backend",
+        default="auto",
+        choices=["auto", "stealth", "stealth-requests", "curl", "urllib"],
+        help="Download backend for fetch scripts (default: auto).",
+    )
+    parser.add_argument(
         "--preprocess",
         action="store_true",
         help="Run preprocessing via app/preprocess_data.py",
@@ -343,7 +351,7 @@ def main() -> int:
         return 1
 
     if args.update_filters:
-        rc = update_filters(filter_dir)
+        rc = update_filters(filter_dir, backend=args.backend)
         if rc != 0:
             return rc
 
@@ -353,12 +361,16 @@ def main() -> int:
             args.profile = "frauentage"
 
         try:
-            config = resolve_profile(args.profile, filter_dir)
+            config = resolve_profile(
+                args.profile,
+                filter_dir,
+                updater=lambda current_filter_dir: update_filters(current_filter_dir, backend=args.backend),
+            )
         except Exception as exc:
             print(str(exc))
             return 1
 
-        rc = run_download(config, args.out_dir)
+        rc = run_download(config, args.out_dir, backend=args.backend)
         if rc != 0:
             return rc
 

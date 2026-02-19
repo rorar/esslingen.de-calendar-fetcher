@@ -10,7 +10,23 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 - `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
 - `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
-- `requirements.txt`: keine externen Python-Abhängigkeiten erforderlich.
+- `requirements.txt`: keine Pflicht-Abhängigkeiten; das optionale Python-Paket `stealth_requests` aktiviert zusätzlich das `stealth-requests`-Backend.
+
+## Setup (VENV + optionale Pakete)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+Optional für DNS-/Anti-Bot-Workarounds das zusätzliche Backend installieren:
+
+```bash
+python3 -m pip install stealth_requests
+```
+
+Hinweis: Wenn Installation wegen DNS fehlschlägt, funktionieren Downloads weiterhin über `curl` oder `urllib`.
 
 ## Standardnutzung (empfohlen)
 
@@ -20,6 +36,12 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 
 ```bash
 python3 main.py --update-filters
+```
+
+Optional mit explizitem Download-Backend:
+
+```bash
+python3 main.py --update-filters --backend stealth
 ```
 
 **Warum zuerst?**
@@ -46,6 +68,12 @@ Optional anderes Ausgabeverzeichnis:
 
 ```bash
 python3 main.py --profile frauentage --out-dir structured-data
+```
+
+Optional mit Backend-Auswahl (`auto`, `stealth`, `stealth-requests`, `curl`, `urllib`):
+
+```bash
+python3 main.py --profile frauentage --backend auto
 ```
 
 ## Profile in `main.py`
@@ -128,61 +156,67 @@ python3 main.py --profile DOWNLOAD_EVERY_DATE
 python3 main.py --profile DOWNLOAD_FRAUENTAGE
 ```
 
-4. SIMPLE Kategorie per normalisiertem Label
+4. Nur Frauenwochen mit automatischer Backend-Reihenfolge
+
+```bash
+python3 main.py --profile DOWNLOAD_FRAUENTAGE --backend auto
+```
+
+5. SIMPLE Kategorie per normalisiertem Label
 
 ```bash
 python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
 ```
 
-5. ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
+6. ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
 ```
 
-6. ADVANCED Kategorien per IDs (mehrere Werte)
+7. ADVANCED Kategorien per IDs (mehrere Werte)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_CAT_ID=908106,908119|908120'
 ```
 
-7. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
+8. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
 ```
 
-8. Kombination Serie + Kategorie (Direktaufruf des Fetchers)
+9. Kombination Serie + Kategorie (Direktaufruf des Fetchers)
 
 ```bash
-python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1
+python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1 --backend auto
 ```
 
-9. Nur Pre-Processing über `main.py`
+10. Nur Pre-Processing über `main.py`
 
 ```bash
 python3 main.py --preprocess
 ```
 
-10. Nur Post-Processing über `main.py`
+11. Nur Post-Processing über `main.py`
 
 ```bash
 python3 main.py --postprocess
 ```
 
-11. Post-Processing mit eigener Config über `main.py`
+12. Post-Processing mit eigener Config über `main.py`
 
 ```bash
 python3 main.py --postprocess --process-config config/processing_config.json
 ```
 
-12. Download + Post-Processing in einem Lauf
+13. Download + Post-Processing in einem Lauf
 
 ```bash
 python3 main.py --profile frauentage --postprocess
 ```
 
-13. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
+14. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
 
 ```bash
 python3 main.py --preprocess
@@ -195,8 +229,9 @@ python3 main.py --postprocess --from-boilerplate
 ## Advanced: Direkter Scriptaufruf
 
 ```bash
-python3 app/fetch_structured_data.py --series-id=-1 --anz=-1
-python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
+python3 app/fetch_structured_data.py --series-id=-1 --anz=-1 --backend auto
+python3 app/fetch_structured_data.py --series-id=330100 --anz=-1 --backend stealth
+python3 app/fetch_filter_options.py --backend auto
 ```
 
 ## Verarbeitung und Export (Pre-/Post-Processing)
@@ -427,10 +462,16 @@ Unterstuetzte ENV-Keys:
 python3 main.py --update-filters
 ```
 
+Optional mit Backend:
+
+```bash
+python3 main.py --update-filters --backend auto
+```
+
 Oder direkt über das Skript:
 
 ```bash
-python3 app/fetch_filter_options.py
+python3 app/fetch_filter_options.py --backend auto
 ```
 
 Output-Dateien:
@@ -450,7 +491,7 @@ Output-Dateien:
 ### Für Maintainer: Seitenänderungen / Break-Fix
 
 1. Filter neu laden:
-   - `python3 main.py --update-filters`
+   - `python3 main.py --update-filters --backend auto`
 2. Ergebnis prüfen:
    - `filter/q.sammelbegrif.id.json` und `filter/q.kat.id.json` müssen `items` mit Einträgen enthalten.
 3. Bei leerem/fehlerhaftem Ergebnis Parser anpassen:
@@ -533,6 +574,24 @@ with opener.open(req, timeout=60) as resp:
 print(payload[:500])
 ```
 
+#### Python (`stealth-requests`, optional)
+
+```python
+import stealth_requests as stealth
+
+url = (
+    "https://www.esslingen.de/site/Esslingen_Layout_2022/"
+    "VXC/20307012/loadData/loadData.json"
+    "?action=pre&q.sammelbegrif.id=330100&anz=-1&SORT=2"
+    "&dateformat=XDATE&xstart=0&loadgruppe=geg&loadgruppe=dhhd&loadgruppe=kkfjfj"
+)
+
+resp = stealth.get(url, timeout=60, impersonate="chrome")
+if resp.status_code >= 400:
+    raise RuntimeError(f"HTTP {resp.status_code}")
+print(resp.text[:500])
+```
+
 #### Python (`requests`, optional)
 
 ```python
@@ -588,12 +647,19 @@ Der JSON-Endpoint liefert ein Array von Events, typischerweise mit Feldern wie:
 - `kategorie`, `kat`, `sammel`
 - `beschreibung`
 
-## curl-Hinweis
+## Backend-Hinweis
 
-Der Downloader prüft, ob `curl` als Systembefehl verfügbar ist.
+Die Downloader (`main.py`, `app/fetch_structured_data.py`, `app/fetch_filter_options.py`) unterstützen:
 
-- Wenn `curl` vorhanden ist, wird für Downloads `curl` verwendet.
-- Wenn `curl` nicht vorhanden ist, nutzt das Skript automatisch einen Python-`urllib`-Fallback.
+- `--backend auto` (Standard):
+  - versucht zuerst `stealth-requests` (wenn installiert),
+  - dann `curl` (wenn vorhanden),
+  - dann `urllib` als Fallback.
+- `--backend stealth` oder `--backend stealth-requests`: startet mit `stealth-requests`, fällt bei Fehlern auf `curl` und dann `urllib` zurück.
+- `--backend curl`: startet mit `curl`, fällt bei Fehlern auf `urllib` zurück.
+- `--backend urllib`: erzwingt Python-`urllib`.
+
+Der tatsächlich verwendete Backend-Pfad wird ausgegeben, z. B. `Download backend(s): curl`.
 
 ## Troubleshooting
 
@@ -609,13 +675,24 @@ curl --noproxy '*' -sS 'https://www.esslingen.de' | head
 
 Wenn das fehlschlägt, später erneut versuchen oder lokale DNS/Netzwerk-Konfiguration prüfen.
 
+### `stealth-requests` nicht installiert
+
+Das ist unkritisch, solange `curl` oder `urllib` verfügbar sind.
+Bei Bedarf nachinstallieren:
+
+```bash
+source .venv/bin/activate
+python3 -m pip install stealth_requests
+```
+
 ### `curl` nicht vorhanden
 
-Das Skript erkennt das automatisch und nutzt den Python-`urllib`-Fallback.
-Du kannst den aktiven Backend-Hinweis im Skript-Output sehen:
+Das Skript erkennt das automatisch und nutzt den Python-`urllib`-Fallback (oder `stealth-requests`, falls verfügbar).
+Du kannst den aktiven Backend-Hinweis im Skript-Output sehen, z. B.:
 
-- `Download backend: curl`
-- `Download backend: urllib fallback (curl nicht gefunden)`
+- `Download backend(s): stealth-requests`
+- `Download backend(s): curl`
+- `Download backend(s): urllib`
 
 ### Zu wenige/unerwartete Termine im JSON
 
@@ -628,7 +705,7 @@ Achte auf die Parameter:
 Beispiel (Frauenwochen komplett):
 
 ```bash
-python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
+python3 app/fetch_structured_data.py --series-id=330100 --anz=-1 --backend auto
 ```
 
 ### Aktuelle Dateien in `structured-data/` wurden überschrieben
@@ -636,11 +713,13 @@ python3 app/fetch_structured_data.py --series-id=330100 --anz=-1
 Das ist beabsichtigt.
 Die jeweils letzte Version liegt in `structured-data/`, ältere Stände in `structured-data/history/` mit Zeitstempel.
 
-### `requests`-Beispiel aus README funktioniert nicht
+### Optionales Python-Paket aus den Beispielen fehlt
 
-`requests` ist optional und nicht in `requirements.txt` enthalten.
-Installieren bei Bedarf:
+`requests` und `stealth-requests` sind optional und nicht zwingend für den Haupt-Workflow.
+Installieren bei Bedarf in der VENV:
 
 ```bash
+source .venv/bin/activate
 python3 -m pip install requests
+python3 -m pip install stealth_requests
 ```

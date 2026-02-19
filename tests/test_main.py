@@ -100,8 +100,31 @@ class TestMainProfiles(unittest.TestCase):
             },
             "structured-data",
         )
+        self.assertIn("--backend", cmd)
+        self.assertIn("auto", cmd)
         self.assertEqual(cmd.count("--series-id"), 2)
         self.assertEqual(cmd.count("--cat-id"), 2)
+
+    def test_build_fetch_command_allows_custom_backend(self) -> None:
+        cmd = main.build_fetch_command(
+            {
+                "series_ids": ["330100"],
+                "anz": "-1",
+                "cat_ids": [],
+            },
+            "structured-data",
+            backend="stealth",
+        )
+        backend_index = cmd.index("--backend")
+        self.assertEqual(cmd[backend_index + 1], "stealth")
+
+    def test_update_filters_uses_wrapper_script_and_backend(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.update_filters(self.filter_dir, backend="stealth")
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "fetch_filter_options.py")
+        self.assertEqual(args, ["--out-dir", str(self.filter_dir), "--backend", "stealth"])
 
     def test_run_preprocess_uses_wrapper_script(self) -> None:
         with patch("main.run_python_script", return_value=0) as mocked:
@@ -154,6 +177,18 @@ class TestMainProfiles(unittest.TestCase):
         mocked_profile.assert_called_once()
         mocked_download.assert_called_once()
         mocked_post.assert_called_once_with("x.json", from_boilerplate=False)
+
+    def test_main_passes_backend_to_download(self) -> None:
+        profile_cfg = {"series_ids": ["330100"], "anz": "-1", "cat_ids": []}
+        with (
+            patch("sys.argv", ["main.py", "--profile", "frauentage", "--backend", "stealth"]),
+            patch("main.resolve_profile", return_value=profile_cfg),
+            patch("main.run_download", return_value=0) as mocked_download,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_called_once_with(profile_cfg, "structured-data", backend="stealth")
 
     def test_main_postprocess_with_from_boilerplate_passes_flag(self) -> None:
         with (
