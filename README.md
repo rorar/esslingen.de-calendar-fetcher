@@ -119,6 +119,8 @@ Hinweise:
 
 - Werte mit Delimiter-Zeichen im Label können in Quotes gesetzt werden, z. B. `"Alpha, Beta"+"C++ Kurs"`.
 - Delimiter können alternativ escaped werden, z. B. `Alpha\, Beta+C\+\+ Kurs`.
+- Apostrophe innerhalb von Labels (z. B. `L'art`) werden als normale Zeichen behandelt.
+- Unbalancierte Quotes führen zu einer klaren Fehlermeldung.
 
 ### Beispiele:
 

@@ -37,6 +37,7 @@ class TestMainProfiles(unittest.TestCase):
                         {"id": "908121", "label": "Bühne · Theater", "level": "katlevel1"},
                         {"id": "908122", "label": "Alpha, Beta", "level": "katlevel1"},
                         {"id": "908123", "label": "C++ Kurs", "level": "katlevel1"},
+                        {"id": "908124", "label": "L'art pour l'art", "level": "katlevel1"},
                     ]
                 },
                 ensure_ascii=False,
@@ -89,6 +90,19 @@ class TestMainProfiles(unittest.TestCase):
     def test_split_multi_values_supports_escaped_delimiters(self) -> None:
         values = main.split_multi_values(r"Alpha\, Beta+C\+\+ Kurs")
         self.assertEqual(values, ["Alpha, Beta", "C++ Kurs"])
+
+    def test_split_multi_values_keeps_apostrophes_inside_tokens(self) -> None:
+        values = main.split_multi_values("L'art pour l'art")
+        self.assertEqual(values, ["L'art pour l'art"])
+
+    def test_split_multi_values_raises_on_unbalanced_quotes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unbalancierte Anführungszeichen"):
+            main.split_multi_values('"Bühne · Theater+Vorträge · Diskussion')
+
+    def test_advanced_cat_label_with_apostrophes_resolves(self) -> None:
+        cfg = main.resolve_profile("DOWNLOAD_CAT_LABEL=L'art pour l'art", self.filter_dir)
+        self.assertEqual(cfg["series_ids"], ["-1"])
+        self.assertEqual(cfg["cat_ids"], ["908124"])
 
     def test_advanced_sammel_id_multi_with_delimiters(self) -> None:
         cfg = main.resolve_profile("DOWNLOAD_SAMMEL_ID=330100|11602300;330100", self.filter_dir)

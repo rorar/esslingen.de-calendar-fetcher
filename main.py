@@ -45,27 +45,53 @@ def split_multi_values(raw: str) -> list[str]:
     values: list[str] = []
     buf: list[str] = []
     quote_char: str | None = None
-    escape_next = False
+    has_nonspace = False
 
-    for ch in raw:
-        if escape_next:
-            buf.append(ch)
-            escape_next = False
-            continue
-
-        if ch == "\\":
-            escape_next = True
-            continue
+    i = 0
+    while i < len(raw):
+        ch = raw[i]
+        next_ch = raw[i + 1] if i + 1 < len(raw) else ""
 
         if quote_char is not None:
+            if ch == "\\" and next_ch and (next_ch == quote_char or next_ch in delimiters or next_ch == "\\"):
+                buf.append(next_ch)
+                if not next_ch.isspace():
+                    has_nonspace = True
+                i += 2
+                continue
             if ch == quote_char:
                 quote_char = None
-            else:
-                buf.append(ch)
+                i += 1
+                continue
+            buf.append(ch)
+            if not ch.isspace():
+                has_nonspace = True
+            i += 1
             continue
 
         if ch in {"'", '"'}:
-            quote_char = ch
+            # Treat quote chars as grouping only at token start.
+            # Apostrophes inside tokens (e.g. L'art) remain literal.
+            if not has_nonspace:
+                quote_char = ch
+            else:
+                buf.append(ch)
+                if not ch.isspace():
+                    has_nonspace = True
+            i += 1
+            continue
+
+        if ch == "\\":
+            if next_ch and (next_ch in delimiters or next_ch in {"'", '"', "\\"}):
+                buf.append(next_ch)
+                if not next_ch.isspace():
+                    has_nonspace = True
+                i += 2
+                continue
+            buf.append(ch)
+            if not ch.isspace():
+                has_nonspace = True
+            i += 1
             continue
 
         if ch in delimiters:
@@ -73,12 +99,17 @@ def split_multi_values(raw: str) -> list[str]:
             if token:
                 values.append(token)
             buf = []
+            has_nonspace = False
+            i += 1
             continue
 
         buf.append(ch)
+        if not ch.isspace():
+            has_nonspace = True
+        i += 1
 
-    if escape_next:
-        buf.append("\\")
+    if quote_char is not None:
+        raise ValueError("Unbalancierte Anführungszeichen in Multi-Wert-Argument")
 
     token = "".join(buf).strip()
     if token:
