@@ -29,6 +29,8 @@
       "category",
       "series",
       "time",
+      "start_time",
+      "end_time",
       "url"
     ],
     "remove_line_breaks_and_tabs": true,

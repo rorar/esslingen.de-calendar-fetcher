@@ -33,6 +33,18 @@
       "required": false
     },
     {
+      "name": "start_time",
+      "label": "Startzeit",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "end_time",
+      "label": "Endzeit",
+      "type": "string",
+      "required": false
+    },
+    {
       "name": "description",
       "label": "Beschreibung",
       "type": "string",
@@ -93,6 +105,8 @@
     "start_date": "",
     "end_date": "",
     "time": "",
+    "start_time": "",
+    "end_time": "",
     "description": "",
     "location_name": "",
     "location_postal_code": "",

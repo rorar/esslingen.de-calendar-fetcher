@@ -162,6 +162,8 @@ Hier sind alle verfügbaren Standard-Felder:
 | `start_date` | Startdatum | Beginn (YYYY-MM-DD) |
 | `end_date` | Enddatum | Ende (YYYY-MM-DD) |
 | `time` | Uhrzeit | Uhrzeit (HH:MM) |
+| `start_time` | Startzeit | Startzeit (HH:MM), z. B. aus `18:00-20:00` |
+| `end_time` | Endzeit | Endzeit (HH:MM), z. B. aus `18:00-20:00` |
 | `description` | Beschreibung | Details zum Event |
 | `location_name` | Ort | Veranstaltungsort |
 | `location_postal_code` | PLZ | Postleitzahl |

@@ -388,6 +388,8 @@ Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerpla
 `export.fields` und `export.field_mappings` in der Config sind damit optional und dienen als Override.
 Im Projekt zeigt `schema.file` auf `config/schema/canonical_event_v1.json` (versionierte Source of Truth).
 Source-nahe Schema-Boilerplates sind optional und standardmäßig deaktiviert.
+Zeit-Hinweis:
+Wenn `time` einen Bereich enthält (z. B. `18:00-20:00`), werden zusätzlich `start_time=18:00` und `end_time=20:00` exportiert.
 
 ### Artefakte unter `output/boilerplate/`
 

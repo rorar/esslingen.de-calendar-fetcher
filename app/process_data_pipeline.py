@@ -40,6 +40,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "category",
             "series",
             "time",
+            "start_time",
+            "end_time",
             "url",
         ],
         "remove_line_breaks_and_tabs": True,
@@ -82,6 +84,8 @@ CANONICAL_SCHEMA_FIELDS: list[dict[str, Any]] = [
     {"name": "start_date", "label": "Startdatum", "type": "date", "required": False},
     {"name": "end_date", "label": "Enddatum", "type": "date", "required": False},
     {"name": "time", "label": "Uhrzeit", "type": "string", "required": False},
+    {"name": "start_time", "label": "Startzeit", "type": "string", "required": False},
+    {"name": "end_time", "label": "Endzeit", "type": "string", "required": False},
     {"name": "description", "label": "Beschreibung", "type": "string", "required": False},
     {"name": "location_name", "label": "Ort", "type": "string", "required": False},
     {"name": "location_postal_code", "label": "PLZ", "type": "string", "required": False},
@@ -453,6 +457,47 @@ def extract_time_from_datetime(value: Any) -> str:
         return ""
 
 
+def split_time_range(value: str) -> tuple[str, str]:
+    text = str(value).strip()
+    if not text:
+        return "", ""
+
+    exact_range = re.fullmatch(r"(\d{2}:\d{2})-(\d{2}:\d{2})", text)
+    if exact_range:
+        return exact_range.group(1), exact_range.group(2)
+
+    single = parse_time_fragment(text)
+    if single:
+        return single, ""
+
+    # Fallback: extract first 1-2 time-like fragments from free text.
+    # Example: "ab 18:00 bis 20:00" -> 18:00 / 20:00
+    matches = re.findall(r"\b(\d{1,2}):(\d{2})\b", text)
+    parsed: list[str] = []
+    for hour, minute in matches:
+        fragment = parse_time_fragment(f"{hour}:{minute}")
+        if fragment:
+            parsed.append(fragment)
+
+    if len(parsed) >= 2:
+        return parsed[0], parsed[1]
+    if len(parsed) == 1:
+        return parsed[0], ""
+    return "", ""
+
+
+def compose_time_value(start_time: str, end_time: str) -> str:
+    if start_time and end_time:
+        if start_time == end_time:
+            return start_time
+        return f"{start_time}-{end_time}"
+    if start_time:
+        return start_time
+    if end_time:
+        return end_time
+    return ""
+
+
 def detect_source_type(record: dict[str, Any]) -> str:
     if "@type" in record or "@context" in record or ("startDate" in record and "name" in record):
         return "jsonld"
@@ -467,12 +512,16 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
     if source_type == "jsonld":
         location = record.get("location")
         address = location.get("address", {}) if isinstance(location, dict) else {}
+        start_time = extract_time_from_datetime(record.get("startDate"))
+        end_time = extract_time_from_datetime(record.get("endDate"))
         return {
             "id": join_values(record.get("identifier") or record.get("@id")),
             "title": join_values(record.get("name")),
             "start_date": format_date(record.get("startDate"), date_input_formats, date_output_format),
             "end_date": format_date(record.get("endDate"), date_input_formats, date_output_format),
-            "time": extract_time_from_datetime(record.get("startDate")),
+            "time": compose_time_value(start_time, end_time),
+            "start_time": start_time,
+            "end_time": end_time,
             "description": join_values(record.get("description")),
             "location_name": join_values(location.get("name") if isinstance(location, dict) else location),
             "location_postal_code": join_values(address.get("postalCode") if isinstance(address, dict) else ""),
@@ -484,12 +533,17 @@ def normalize_record(record: dict[str, Any], source_file: str, config: dict[str,
             "source_file": source_file,
         }
 
+    normalized_time = normalize_time_text(record.get("zeit"))
+    start_time, end_time = split_time_range(normalized_time)
+
     return {
         "id": join_values(record.get("id")),
         "title": join_values(record.get("titel")),
         "start_date": format_date(record.get("von"), date_input_formats, date_output_format),
         "end_date": format_date(record.get("bis") or record.get("von"), date_input_formats, date_output_format),
-        "time": normalize_time_text(record.get("zeit")),
+        "time": normalized_time,
+        "start_time": start_time,
+        "end_time": end_time,
         "description": join_values(record.get("beschreibung") or record.get("kurzbeschreibung")),
         "location_name": join_values(record.get("location")),
         "location_postal_code": join_values(record.get("location_plz")),

@@ -25,6 +25,37 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(pipeline.extract_time_from_datetime("2026-03-08T09:05:00"), "09:05")
         self.assertEqual(pipeline.extract_time_from_datetime("2026-03-08T09:05:00+01:00"), "09:05")
 
+    def test_split_time_range_from_normalized_values(self) -> None:
+        self.assertEqual(pipeline.split_time_range("18:00-20:00"), ("18:00", "20:00"))
+        self.assertEqual(pipeline.split_time_range("18:00"), ("18:00", ""))
+        self.assertEqual(pipeline.split_time_range(""), ("", ""))
+
+    def test_normalize_record_splits_load_data_time_range(self) -> None:
+        cfg = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        record = {
+            "id": "x1",
+            "titel": "Abendveranstaltung",
+            "von": "18.02.2026",
+            "zeit": "18:00-20:00",
+        }
+        normalized = pipeline.normalize_record(record, "loadData_20307012.json", cfg)
+        self.assertEqual(normalized["time"], "18:00-20:00")
+        self.assertEqual(normalized["start_time"], "18:00")
+        self.assertEqual(normalized["end_time"], "20:00")
+
+    def test_normalize_record_splits_jsonld_time_range(self) -> None:
+        cfg = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        record = {
+            "@type": "Event",
+            "name": "JSONLD",
+            "startDate": "2026-03-08T18:00:00+01:00",
+            "endDate": "2026-03-08T20:00:00+01:00",
+        }
+        normalized = pipeline.normalize_record(record, "jsonld_20307012_generated.json", cfg)
+        self.assertEqual(normalized["time"], "18:00-20:00")
+        self.assertEqual(normalized["start_time"], "18:00")
+        self.assertEqual(normalized["end_time"], "20:00")
+
     def test_env_overrides_for_formats_and_csv_options(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         with patch.dict(
@@ -113,7 +144,7 @@ class TestProcessDataPipeline(unittest.TestCase):
                             "id": "1",
                             "titel": " Test <b>Event</b> ",
                             "von": "18.02.2026",
-                            "zeit": "19:30",
+                            "zeit": "19:30-21:00",
                             "beschreibung": "Line1\nLine2 &amp; More",
                             "location": "Haus A",
                             "location_plz": "73728",
@@ -185,12 +216,17 @@ class TestProcessDataPipeline(unittest.TestCase):
             self.assertEqual(payload["records"][0]["title"], "Test Event")
             self.assertEqual(payload["records"][0]["description"], "Line1 Line2 & More")
             self.assertEqual(payload["records"][0]["start_date"], "2026-02-18")
+            self.assertEqual(payload["records"][0]["time"], "19:30-21:00")
+            self.assertEqual(payload["records"][0]["start_time"], "19:30")
+            self.assertEqual(payload["records"][0]["end_time"], "21:00")
 
             csv_file = out_dir / "loadData_20307012_csv_part1.csv"
             self.assertTrue(csv_file.exists())
             csv_text = csv_file.read_text(encoding="utf-8")
             self.assertIn("Titel", csv_text)
             self.assertIn("Test Event", csv_text)
+            self.assertIn("Startzeit", csv_text)
+            self.assertIn("Endzeit", csv_text)
 
             xml_file = out_dir / "jsonld_20307012_generated_xml_part1.xml"
             self.assertTrue(xml_file.exists())
@@ -204,6 +240,8 @@ class TestProcessDataPipeline(unittest.TestCase):
             self.assertTrue(jsonld_boilerplate_file.exists())
             jsonld_payload = json.loads(jsonld_boilerplate_file.read_text(encoding="utf-8"))
             self.assertEqual(jsonld_payload["records"][0]["time"], "")
+            self.assertEqual(jsonld_payload["records"][0]["start_time"], "")
+            self.assertEqual(jsonld_payload["records"][0]["end_time"], "")
 
             source_schema_file = out_dir / "boilerplate" / "schema-boilerplates" / "source_loadData_20307012.json"
             self.assertTrue(source_schema_file.exists())
