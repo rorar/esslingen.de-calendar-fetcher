@@ -49,6 +49,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "remove_html_entities": True,
         "trim_whitespace": True,
     },
+    "replacements": {
+        "enabled": False,
+        "rules": [],
+    },
     "export": {
         "enabled": True,
         "formats": ["csv", "xml"],
@@ -98,6 +102,11 @@ CANONICAL_SCHEMA_FIELDS: list[dict[str, Any]] = [
 ]
 CANONICAL_FIELD_ORDER = [field["name"] for field in CANONICAL_SCHEMA_FIELDS]
 CANONICAL_FIELD_LABELS = {field["name"]: field["label"] for field in CANONICAL_SCHEMA_FIELDS}
+REPLACEMENT_FIELD_ALIASES: dict[str, str] = {
+    "location": "location_name",
+    "titel": "title",
+    "zeit": "time",
+}
 
 
 class SafeFormatDict(dict[str, Any]):
@@ -187,6 +196,64 @@ def ensure_rows_per_file_config(export_cfg: dict[str, Any]) -> None:
     export_cfg["rows_per_file"] = {"enabled": enabled, "value": value}
 
 
+def ensure_replacements_config(config: dict[str, Any]) -> None:
+    replacements_cfg = config.get("replacements")
+    if not isinstance(replacements_cfg, dict):
+        replacements_cfg = {}
+
+    enabled_raw = replacements_cfg.get("enabled", False)
+    if isinstance(enabled_raw, str):
+        enabled = parse_bool(enabled_raw)
+    else:
+        enabled = bool(enabled_raw)
+
+    raw_rules = replacements_cfg.get("rules", [])
+    if not isinstance(raw_rules, list):
+        raise ValueError("replacements.rules muss eine Liste sein")
+
+    normalized_rules: list[dict[str, Any]] = []
+    for idx, raw_rule in enumerate(raw_rules, start=1):
+        if not isinstance(raw_rule, dict):
+            raise ValueError(f"replacements.rules[{idx}] muss ein Objekt sein")
+
+        field = str(raw_rule.get("field", "")).strip()
+        search = str(raw_rule.get("search", ""))
+        replace = str(raw_rule.get("replace", ""))
+        mode = str(raw_rule.get("mode", "exact")).strip().lower()
+        case_sensitive_raw = raw_rule.get("case_sensitive", True)
+
+        if isinstance(case_sensitive_raw, str):
+            case_sensitive = parse_bool(case_sensitive_raw)
+        else:
+            case_sensitive = bool(case_sensitive_raw)
+
+        if not field:
+            raise ValueError(f"replacements.rules[{idx}].field darf nicht leer sein")
+        if search == "":
+            raise ValueError(f"replacements.rules[{idx}].search darf nicht leer sein")
+        if mode not in {"exact", "contains", "regex"}:
+            raise ValueError(f"replacements.rules[{idx}].mode muss exact, contains oder regex sein")
+        if mode == "regex":
+            try:
+                re.compile(search)
+            except re.error as exc:
+                raise ValueError(f"Ungültiger Regex in replacements.rules[{idx}].search: {exc}") from exc
+
+        normalized_rules.append(
+            {
+                "field": field,
+                "search": search,
+                "replace": replace,
+                "mode": mode,
+                "case_sensitive": case_sensitive,
+            }
+        )
+
+    replacements_cfg["enabled"] = enabled
+    replacements_cfg["rules"] = normalized_rules
+    config["replacements"] = replacements_cfg
+
+
 def parse_list(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
@@ -248,6 +315,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     env = os.environ
     ensure_rows_per_file_config(updated["export"])
     ensure_schema_config(updated)
+    ensure_replacements_config(updated)
 
     if value := env.get("PROCESS_INPUT_MODE"):
         updated["input"]["mode"] = value.strip().lower()
@@ -276,6 +344,13 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
         updated["preprocessing"]["remove_html_entities"] = parse_bool(value)
     if value := env.get("PROCESS_CLEAN_TRIM_WHITESPACE"):
         updated["preprocessing"]["trim_whitespace"] = parse_bool(value)
+    if value := env.get("PROCESS_REPLACEMENTS_ENABLED"):
+        updated["replacements"]["enabled"] = parse_bool(value)
+    if value := env.get("PROCESS_REPLACEMENTS_RULES"):
+        loaded_rules = json.loads(value)
+        if not isinstance(loaded_rules, list):
+            raise ValueError("PROCESS_REPLACEMENTS_RULES muss ein JSON-Array sein")
+        updated["replacements"]["rules"] = loaded_rules
 
     if value := env.get("PROCESS_EXPORT_FORMATS"):
         updated["export"]["formats"] = [fmt.lower() for fmt in parse_list(value)]
@@ -318,6 +393,7 @@ def apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
 
     ensure_rows_per_file_config(updated["export"])
     ensure_schema_config(updated)
+    ensure_replacements_config(updated)
     normalize_input_mode(updated["input"])
     updated["export"]["line_ending"] = decode_escapes(str(updated["export"]["line_ending"]))
     normalize_csv_options(updated)
@@ -334,6 +410,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
     merged = deep_merge_dict(DEFAULT_CONFIG, user_config)
     ensure_rows_per_file_config(merged["export"])
     ensure_schema_config(merged)
+    ensure_replacements_config(merged)
     normalize_input_mode(merged["input"])
     return apply_env_overrides(merged)
 
@@ -570,6 +647,78 @@ def clean_text(value: str, config: dict[str, Any]) -> str:
     return out
 
 
+def apply_replacement_to_text(
+    value: str,
+    search: str,
+    replace: str,
+    mode: str,
+    case_sensitive: bool,
+) -> tuple[str, int]:
+    if mode == "exact":
+        if case_sensitive:
+            if value == search:
+                return replace, 1
+            return value, 0
+        if value.casefold() == search.casefold():
+            return replace, 1
+        return value, 0
+
+    if mode == "contains":
+        if case_sensitive:
+            hits = value.count(search)
+            if hits == 0:
+                return value, 0
+            return value.replace(search, replace), hits
+        pattern = re.compile(re.escape(search), flags=re.IGNORECASE)
+        return pattern.subn(replace, value)
+
+    flags = 0 if case_sensitive else re.IGNORECASE
+    return re.subn(search, replace, value, flags=flags)
+
+
+def apply_replacements(records: list[dict[str, str]], replacements_cfg: dict[str, Any]) -> list[dict[str, str]]:
+    if not replacements_cfg.get("enabled", False):
+        return records
+
+    rules = replacements_cfg.get("rules", [])
+    if not isinstance(rules, list) or not rules:
+        return records
+
+    updated_records: list[dict[str, str]] = []
+    for record in records:
+        updated = dict(record)
+
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            field = str(rule.get("field", "")).strip()
+            search = str(rule.get("search", ""))
+            replace = str(rule.get("replace", ""))
+            mode = str(rule.get("mode", "exact")).strip().lower()
+            case_sensitive = bool(rule.get("case_sensitive", True))
+            if not field or search == "":
+                continue
+
+            candidate_fields = [field]
+            alias = REPLACEMENT_FIELD_ALIASES.get(field)
+            if alias and alias not in candidate_fields:
+                candidate_fields.append(alias)
+
+            for candidate in candidate_fields:
+                value = updated.get(candidate)
+                if not isinstance(value, str):
+                    continue
+                new_value, hits = apply_replacement_to_text(value, search, replace, mode, case_sensitive)
+                if hits > 0:
+                    updated[candidate] = new_value
+                break
+
+        updated_records.append(updated)
+
+    return updated_records
+
+
 def preprocess_records(records: list[dict[str, str]], preprocess_cfg: dict[str, Any]) -> list[dict[str, str]]:
     if not preprocess_cfg.get("enabled", True):
         return records
@@ -601,7 +750,8 @@ def normalize_source_records(
     raw_records: list[dict[str, Any]], source_file: str, config: dict[str, Any]
 ) -> list[dict[str, str]]:
     normalized = [normalize_record(item, source_file, config) for item in raw_records]
-    return preprocess_records(normalized, config["preprocessing"])
+    preprocessed = preprocess_records(normalized, config["preprocessing"])
+    return apply_replacements(preprocessed, config.get("replacements", {}))
 
 
 def read_source_records(input_file: Path, config: dict[str, Any]) -> list[dict[str, str]]:
@@ -997,6 +1147,7 @@ def export_xml(
 def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[str, list[Path]]:
     normalize_input_mode(config["input"])
     ensure_schema_config(config)
+    ensure_replacements_config(config)
     output_dir = Path(str(config["export"]["output_dir"]))
     output_dir.mkdir(parents=True, exist_ok=True)
     encoding = str(config["export"]["encoding"])
@@ -1095,6 +1246,7 @@ def run_pipeline(config: dict[str, Any], timestamp: str | None = None) -> dict[s
                 raise FileNotFoundError(f"Boilerplate-Datei nicht gefunden: {boilerplate_file}")
 
             source_name, records = read_boilerplate_records(boilerplate_file)
+            records = apply_replacements(records, config.get("replacements", {}))
             written["boilerplate_input"].append(boilerplate_file)
             export_source_records(source_name, records)
 

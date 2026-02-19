@@ -142,6 +142,23 @@ Du möchtest das Trennzeichen der CSV ändern (z. B. Komma statt Semikolon) oder
 
 3.  Suche den Abschnitt `"export"` -> `"filename_template"`, um die Dateinamen der Ausgabedateien zu ändern.
 
+**Beispiel: Orte per Suchen/Ersetzen korrigieren**
+Wenn in den Quelldaten `Ort siehe Beschreibung` steht, kannst du das automatisch ersetzen:
+```json
+"replacements": {
+  "enabled": true,
+  "rules": [
+    {
+      "field": "location_name",
+      "search": "Ort siehe Beschreibung",
+      "replace": "Kommunales Kino",
+      "mode": "exact",
+      "case_sensitive": false
+    }
+  ]
+}
+```
+
 Änderungen werden beim nächsten Aufruf mit `--postprocess` sofort wirksam.
 
 ---

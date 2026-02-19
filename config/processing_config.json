@@ -38,6 +38,18 @@
     "remove_html_entities": true,
     "trim_whitespace": true
   },
+  "replacements": {
+    "enabled": true,
+    "rules": [
+      {
+        "field": "location_name",
+        "search": "Ort siehe Beschreibung",
+        "replace": "Kommunales Kino",
+        "mode": "exact",
+        "case_sensitive": false
+      }
+    ]
+  },
   "export": {
     "enabled": true,
     "_notes_formats": [

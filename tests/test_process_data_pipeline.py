@@ -56,6 +56,40 @@ class TestProcessDataPipeline(unittest.TestCase):
         self.assertEqual(normalized["start_time"], "18:00")
         self.assertEqual(normalized["end_time"], "20:00")
 
+    def test_apply_replacements_exact_case_insensitive(self) -> None:
+        records = [{"location_name": "Ort siehe Beschreibung"}]
+        cfg = {
+            "enabled": True,
+            "rules": [
+                {
+                    "field": "location_name",
+                    "search": "ort siehe beschreibung",
+                    "replace": "Kommunales Kino",
+                    "mode": "exact",
+                    "case_sensitive": False,
+                }
+            ],
+        }
+        updated = pipeline.apply_replacements(records, cfg)
+        self.assertEqual(updated[0]["location_name"], "Kommunales Kino")
+
+    def test_apply_replacements_uses_field_alias(self) -> None:
+        records = [{"location_name": "Ort siehe Beschreibung"}]
+        cfg = {
+            "enabled": True,
+            "rules": [
+                {
+                    "field": "location",
+                    "search": "Ort siehe Beschreibung",
+                    "replace": "Kommunales Kino",
+                    "mode": "exact",
+                    "case_sensitive": True,
+                }
+            ],
+        }
+        updated = pipeline.apply_replacements(records, cfg)
+        self.assertEqual(updated[0]["location_name"], "Kommunales Kino")
+
     def test_env_overrides_for_formats_and_csv_options(self) -> None:
         base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
         with patch.dict(
@@ -126,6 +160,22 @@ class TestProcessDataPipeline(unittest.TestCase):
             updated["schema"]["source_boilerplates"]["dir"],
             "output/boilerplate/schema-boilerplates/custom-source",
         )
+
+    def test_env_overrides_for_replacements(self) -> None:
+        base = pipeline.deep_merge_dict(pipeline.DEFAULT_CONFIG, {})
+        with patch.dict(
+            os.environ,
+            {
+                "PROCESS_REPLACEMENTS_ENABLED": "true",
+                "PROCESS_REPLACEMENTS_RULES": '[{"field":"location_name","search":"Ort siehe Beschreibung","replace":"Kommunales Kino","mode":"exact","case_sensitive":false}]',
+            },
+            clear=False,
+        ):
+            updated = pipeline.apply_env_overrides(base)
+
+        self.assertTrue(updated["replacements"]["enabled"])
+        self.assertEqual(len(updated["replacements"]["rules"]), 1)
+        self.assertEqual(updated["replacements"]["rules"][0]["field"], "location_name")
 
     def test_run_pipeline_creates_boilerplate_and_split_exports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -293,6 +343,57 @@ class TestProcessDataPipeline(unittest.TestCase):
             csv_text = expected.read_text(encoding="utf-8")
             self.assertIn("Event 1", csv_text)
             self.assertIn("Event 2", csv_text)
+
+    def test_run_pipeline_applies_replacements_in_raw_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            in_dir = root / "in"
+            out_dir = root / "out"
+            in_dir.mkdir(parents=True, exist_ok=True)
+
+            load_data_path = in_dir / "loadData_20307012.json"
+            load_data_path.write_text(
+                json.dumps(
+                    [
+                        {"id": "1", "titel": "Event 1", "von": "18.02.2026", "location": "Ort siehe Beschreibung"},
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = pipeline.deep_merge_dict(
+                pipeline.DEFAULT_CONFIG,
+                {
+                    "input": {"files": [str(load_data_path)]},
+                    "replacements": {
+                        "enabled": True,
+                        "rules": [
+                            {
+                                "field": "location_name",
+                                "search": "Ort siehe Beschreibung",
+                                "replace": "Kommunales Kino",
+                                "mode": "exact",
+                                "case_sensitive": False,
+                            }
+                        ],
+                    },
+                    "export": {
+                        "output_dir": str(out_dir),
+                        "formats": ["csv"],
+                        "rows_per_file": {"enabled": False, "value": 1000},
+                    },
+                },
+            )
+            pipeline.normalize_csv_options(cfg)
+            written = pipeline.run_pipeline(cfg, timestamp="20260218_151000")
+
+            self.assertEqual(len(written["csv"]), 1)
+            csv_file = out_dir / "loadData_20307012_csv_20260218_151000.csv"
+            self.assertTrue(csv_file.exists())
+            csv_text = csv_file.read_text(encoding="utf-8")
+            self.assertIn("Kommunales Kino", csv_text)
+            self.assertNotIn("Ort siehe Beschreibung", csv_text)
 
     def test_run_pipeline_from_boilerplate_exports_without_rewriting_boilerplate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

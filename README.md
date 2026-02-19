@@ -390,6 +390,8 @@ Im Projekt zeigt `schema.file` auf `config/schema/canonical_event_v1.json` (vers
 Source-nahe Schema-Boilerplates sind optional und standardmäßig deaktiviert.
 Zeit-Hinweis:
 Wenn `time` einen Bereich enthält (z. B. `18:00-20:00`), werden zusätzlich `start_time=18:00` und `end_time=20:00` exportiert.
+Replacement-Hinweis:
+Per Config kannst du gezielt Werte ersetzen, z. B. `location_name: "Ort siehe Beschreibung"` -> `"Kommunales Kino"`.
 
 ### Artefakte unter `output/boilerplate/`
 
@@ -567,6 +569,9 @@ Wichtige Optionen in der Config:
   - `preprocessing.remove_html_tags`
   - `preprocessing.remove_html_entities`
   - `preprocessing.trim_whitespace`
+- Replacements (Suchen/Ersetzen):
+  - `replacements.enabled`
+  - `replacements.rules` (Liste von Regeln mit `field`, `search`, `replace`, optional `mode=exact|contains|regex`, `case_sensitive`)
 - Export:
   - `export.formats` (`csv`, `xml`)
   - `export.field_mappings` (optional: Override für Spalten-/Tag-Namen)
@@ -601,6 +606,11 @@ PROCESS_SCHEMA_FILE=config/schema/canonical_event_v1.json python3 main.py --post
 # Source-nahe Schema-Boilerplates deaktivieren
 PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED=false python3 main.py --preprocess
 
+# Suchen/Ersetzen aktivieren (JSON-Array als ENV)
+PROCESS_REPLACEMENTS_ENABLED=true \
+PROCESS_REPLACEMENTS_RULES='[{"field":"location_name","search":"Ort siehe Beschreibung","replace":"Kommunales Kino","mode":"exact","case_sensitive":false}]' \
+python3 main.py --postprocess
+
 # CSV-Formatierung (Tab-Delimiter, Windows-Zeilenende)
 PROCESS_CSV_DELIMITER='\t' PROCESS_LINE_ENDING='\r\n' python3 main.py --postprocess
 
@@ -629,6 +639,8 @@ Unterstuetzte ENV-Keys:
   - `PROCESS_CLEAN_REMOVE_HTML_TAGS`
   - `PROCESS_CLEAN_REMOVE_HTML_ENTITIES`
   - `PROCESS_CLEAN_TRIM_WHITESPACE`
+  - `PROCESS_REPLACEMENTS_ENABLED`
+  - `PROCESS_REPLACEMENTS_RULES` (JSON-Array)
 - Export:
   - `PROCESS_EXPORT_FORMATS`
   - `PROCESS_EXPORT_FIELDS`
