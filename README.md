@@ -2,38 +2,49 @@
 
 Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./structured-data`.
 
-## 5-Minuten-Quickstart (neu im Projekt)
+## 5-Minuten-Quickstart (vollständig, End-to-End)
 
-1. Optionales Setup mit VENV und Paketen
+| Phase | Zweck | Befehl | Ergebnis | Internet |
+|---|---|---|---|---|
+| 0. Setup | Laufzeit vorbereiten | `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt` | Python-Umgebung bereit | Nein |
+| 1. Doctor | Umgebung prüfen | `python3 main.py --doctor` | Check für Python, Config, Ordner, DNS, optionale Pakete | Teilweise |
+| 2. Filter-Refresh | aktuelle Labels/IDs holen | `python3 main.py --update-filters` | `filter/q.sammelbegrif.id.json`, `filter/q.kat.id.json` | Ja |
+| 3. Filter-Discovery | IDs/Labels anzeigen | `python3 main.py --list-filters` | Sicht auf nutzbare Filterwerte | Nein (bei vorhandenem Cache) |
+| 4. Ingestion | Kalenderdaten laden | `python3 main.py --profile DOWNLOAD_FRAUENTAGE` | `structured-data/loadData_20307012.json`, `ical_20307012.ics`, `jsonld_20307012_generated.json` + `structured-data/history/*` | Ja |
+| 5. Pre-Processing | Daten bereinigen/normalisieren | `python3 main.py --preprocess` | `output/boilerplate/runtime-snapshots/*`, `output/boilerplate/schema-boilerplates/*` | Nein |
+| 6. Post-Processing | CSV/XML exportieren | `python3 main.py --postprocess --from-boilerplate` | `output/*.csv`, `output/*.xml` | Nein |
+| 7. QA | Exporte validieren | `python3 main.py --lint-csv --lint-recursive` | Lint-Report (OK/FAIL) | Nein |
+
+### Copy/Paste Ablauf
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-```
-
-2. System-/Umgebungscheck ausführen
-
-```bash
 python3 main.py --doctor
-```
-
-3. Filter-Optionen aktualisieren
-
-```bash
 python3 main.py --update-filters
-```
-
-4. Verfügbare Filter anzeigen (IDs + Labels)
-
-```bash
 python3 main.py --list-filters
+python3 main.py --profile DOWNLOAD_FRAUENTAGE
+python3 main.py --preprocess
+python3 main.py --postprocess --from-boilerplate
+python3 main.py --lint-csv --lint-recursive
 ```
 
-5. Erstes Profil ausführen
+### Wichtige Varianten
 
 ```bash
-python3 main.py --profile DOWNLOAD_FRAUENTAGE
+python3 main.py --profile DOWNLOAD_EVERY_DATE
+python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
+python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
+python3 main.py --profile DOWNLOAD_FRAUENTAGE --backend auto
 ```
+
+### Wo liegt was?
+
+- Rohdaten aktuell: `structured-data/`
+- Rohdaten-Historie: `structured-data/history/`
+- Laufzeit-Snapshots: `output/boilerplate/runtime-snapshots/`
+- Schema-Boilerplates: `output/boilerplate/schema-boilerplates/`
+- Exportdateien: `output/*.csv`, `output/*.xml`
 
 ## Dateien
 
