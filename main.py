@@ -175,6 +175,32 @@ def run_postprocess(config_path: str, from_boilerplate: bool = False) -> int:
     return run_python_script(script, args)
 
 
+def run_csv_lint(
+    config_path: str,
+    output_dir: str | None = None,
+    csv_files: list[str] | None = None,
+    recursive: bool = False,
+    no_schema_check: bool = False,
+    schema_check: bool = False,
+    strict_config: bool = False,
+) -> int:
+    script = Path(__file__).resolve().parent / "app" / "lint_csv.py"
+    args = ["--config", config_path]
+    if output_dir:
+        args.extend(["--output-dir", output_dir])
+    for csv_file in csv_files or []:
+        args.extend(["--csv-file", csv_file])
+    if recursive:
+        args.append("--recursive")
+    if no_schema_check:
+        args.append("--no-schema-check")
+    if schema_check:
+        args.append("--schema-check")
+    if strict_config:
+        args.append("--strict-config")
+    return run_python_script(script, args)
+
+
 def load_filter_items(file_path: Path) -> list[dict[str, str]]:
     if not file_path.exists():
         raise FileNotFoundError(str(file_path))
@@ -402,6 +428,42 @@ def main() -> int:
         help="Run postprocessing via app/postprocess_output.py",
     )
     parser.add_argument(
+        "--lint-csv",
+        action="store_true",
+        help="Run CSV lint via app/lint_csv.py (Frictionless).",
+    )
+    parser.add_argument(
+        "--lint-output-dir",
+        default=None,
+        help="Override output directory for --lint-csv (default: export.output_dir from processing config).",
+    )
+    parser.add_argument(
+        "--lint-csv-file",
+        action="append",
+        default=[],
+        help="Explicit CSV file for --lint-csv (can be used multiple times).",
+    )
+    parser.add_argument(
+        "--lint-recursive",
+        action="store_true",
+        help="Recursive CSV file search for --lint-csv.",
+    )
+    parser.add_argument(
+        "--lint-no-schema-check",
+        action="store_true",
+        help="Disable expected-header check from schema/config for --lint-csv.",
+    )
+    parser.add_argument(
+        "--lint-schema-check",
+        action="store_true",
+        help="Enable expected-header check from schema/config for --lint-csv.",
+    )
+    parser.add_argument(
+        "--lint-strict-config",
+        action="store_true",
+        help="Use CSV delimiter/encoding from config strictly and enable schema-check for --lint-csv.",
+    )
+    parser.add_argument(
         "--from-boilerplate",
         action="store_true",
         help="Use boilerplate JSON files as input for --postprocess",
@@ -414,7 +476,7 @@ def main() -> int:
     args = parser.parse_args()
 
     filter_dir = Path(args.filter_dir)
-    processing_requested = bool(args.preprocess or args.postprocess)
+    processing_requested = bool(args.preprocess or args.postprocess or args.lint_csv)
 
     if args.from_boilerplate and not args.postprocess:
         print("--from-boilerplate kann nur zusammen mit --postprocess verwendet werden")
@@ -451,6 +513,22 @@ def main() -> int:
 
     if args.postprocess:
         rc = run_postprocess(args.process_config, from_boilerplate=args.from_boilerplate)
+        if rc != 0:
+            return rc
+
+    if args.lint_csv:
+        lint_schema_check = bool(args.lint_schema_check or args.lint_strict_config)
+        if args.lint_no_schema_check:
+            lint_schema_check = False
+        rc = run_csv_lint(
+            config_path=args.process_config,
+            output_dir=args.lint_output_dir,
+            csv_files=args.lint_csv_file,
+            recursive=args.lint_recursive,
+            no_schema_check=args.lint_no_schema_check,
+            schema_check=lint_schema_check,
+            strict_config=args.lint_strict_config,
+        )
         if rc != 0:
             return rc
 

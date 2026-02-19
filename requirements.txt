@@ -3,4 +3,6 @@
 # - `curl` as system command
 # - `stealth-requests` backend via Python package `stealth_requests`
 #   (install via `python3 -m pip install stealth_requests`)
+# Optional CSV linting:
+# - `frictionless` (install via `python3 -m pip install frictionless`)
 # Built-in fallback: Python `urllib`.

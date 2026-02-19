@@ -187,6 +187,38 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(script_path.name, "postprocess_output.py")
         self.assertEqual(args, ["--config", "config/processing_config.json", "--from-boilerplate"])
 
+    def test_run_csv_lint_uses_wrapper_script(self) -> None:
+        with patch("main.run_python_script", return_value=0) as mocked:
+            rc = main.run_csv_lint(
+                config_path="config/processing_config.json",
+                output_dir="output",
+                csv_files=["output/a.csv", "output/b.csv"],
+                recursive=True,
+                no_schema_check=True,
+                schema_check=True,
+                strict_config=True,
+            )
+        self.assertEqual(rc, 0)
+        script_path, args = mocked.call_args.args
+        self.assertEqual(script_path.name, "lint_csv.py")
+        self.assertEqual(
+            args,
+            [
+                "--config",
+                "config/processing_config.json",
+                "--output-dir",
+                "output",
+                "--csv-file",
+                "output/a.csv",
+                "--csv-file",
+                "output/b.csv",
+                "--recursive",
+                "--no-schema-check",
+                "--schema-check",
+                "--strict-config",
+            ],
+        )
+
     def test_main_preprocess_only_does_not_run_download(self) -> None:
         with (
             patch("sys.argv", ["main.py", "--preprocess"]),
@@ -238,6 +270,28 @@ class TestMainProfiles(unittest.TestCase):
         self.assertEqual(rc, 0)
         mocked_download.assert_not_called()
         mocked_post.assert_called_once_with("config/processing_config.json", from_boilerplate=True)
+
+    def test_main_lint_only_does_not_run_download(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--lint-csv"]),
+            patch("main.run_csv_lint", return_value=0) as mocked_lint,
+            patch("main.run_download") as mocked_download,
+            patch("main.resolve_profile") as mocked_profile,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_not_called()
+        mocked_profile.assert_not_called()
+        mocked_lint.assert_called_once_with(
+            config_path="config/processing_config.json",
+            output_dir=None,
+            csv_files=[],
+            recursive=False,
+            no_schema_check=False,
+            schema_check=False,
+            strict_config=False,
+        )
 
     def test_main_from_boilerplate_without_postprocess_fails(self) -> None:
         with patch("sys.argv", ["main.py", "--from-boilerplate"]):

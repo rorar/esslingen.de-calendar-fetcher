@@ -8,6 +8,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
 - `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots, kanonische Schema-Boilerplate und source-nahe Schema-Boilerplates).
 - `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
+- `app/lint_csv.py`: CSV-Linting via Frictionless (Struktur + optional Header-Schema-Check).
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
 - `config/processing_config.json`: Best-Practice-Konfiguration fuer Pre-/Post-Processing.
 - `requirements.txt`: keine Pflicht-Abhängigkeiten; das optionale Python-Paket `stealth_requests` aktiviert zusätzlich das `stealth-requests`-Backend.
@@ -37,6 +38,12 @@ Optional für DNS-/Anti-Bot-Workarounds das zusätzliche Backend installieren:
 
 ```bash
 python3 -m pip install stealth_requests
+```
+
+Optional für CSV-Linting:
+
+```bash
+python3 -m pip install frictionless
 ```
 
 Hinweis: Wenn Installation wegen DNS fehlschlägt, funktionieren Downloads weiterhin über `curl` oder `urllib`.
@@ -247,6 +254,12 @@ python3 main.py --preprocess
 python3 main.py --postprocess --from-boilerplate
 ```
 
+15. CSV-Linting der Exportdateien (Frictionless)
+
+```bash
+python3 main.py --lint-csv
+```
+
 ## Advanced: Direkter Scriptaufruf
 
 ```bash
@@ -362,11 +375,64 @@ Direktes Skript aus Boilerplates:
 python3 app/postprocess_output.py --config config/processing_config.json --from-boilerplate
 ```
 
+CSV-Linting über `main.py`:
+
+```bash
+python3 main.py --lint-csv
+```
+
+CSV-Linting mit rekursiver Suche und explizitem Output-Verzeichnis:
+
+```bash
+python3 main.py --lint-csv --lint-output-dir output --lint-recursive
+```
+
+CSV-Linting für eine einzelne Datei:
+
+```bash
+python3 main.py --lint-csv --lint-csv-file output/loadData_20307012_csv_20260218_130000.csv
+```
+
+CSV-Linting mit Header-Schema-Check:
+
+```bash
+python3 main.py --lint-csv --lint-schema-check
+```
+
+CSV-Linting im strikten Config-Modus (Delimiter/Encoding aus Config + Schema-Check):
+
+```bash
+python3 main.py --lint-csv --lint-strict-config
+```
+
+Direktes Lint-Skript:
+
+```bash
+python3 app/lint_csv.py --config config/processing_config.json
+```
+
 Alternativ direkt ueber die kombinierte Pipeline:
 
 ```bash
 python3 app/process_data_pipeline.py --config config/processing_config.json
 ```
+
+### CSV Lint (Frictionless)
+
+`app/lint_csv.py` validiert exportierte CSV-Dateien mit Frictionless.
+
+- Standardlauf:
+  - scannt `export.output_dir` aus der Config nach `*.csv`.
+  - validiert strukturell (Frictionless Auto-Erkennung für CSV-Dialekt).
+  - Delimiter/Encoding aus Config werden nur im strikten Modus erzwungen.
+- Optional:
+  - `--schema-check` bzw. `--lint-schema-check`: erwartete Header aus Schema/Config prüfen.
+  - `--strict-config` bzw. `--lint-strict-config`: Config-Dialekt erzwingen und Schema-Check aktivieren.
+  - `--no-schema-check` bzw. `--lint-no-schema-check`: Schema-Check explizit deaktivieren.
+- Exit-Codes:
+  - `0`: alle CSV-Dateien valide
+  - `1`: mindestens eine CSV-Datei fehlerhaft oder nicht gefunden
+  - `2`: Setup-/Konfigurationsproblem (z. B. `frictionless` nicht installiert)
 
 ### Konfiguration
 
