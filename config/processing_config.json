@@ -14,9 +14,9 @@
   },
   "schema": {
     "enabled": true,
-    "file": "",
+    "file": "config/schema/canonical_event_v1.json",
     "source_boilerplates": {
-      "enabled": true,
+      "enabled": false,
       "dir": ""
     }
   },

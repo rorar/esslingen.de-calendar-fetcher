@@ -1,0 +1,106 @@
+{
+  "schema_id": "canonical_event_v1",
+  "description": "Canonical schema for export field order and labels.",
+  "fields": [
+    {
+      "name": "id",
+      "label": "ID",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "title",
+      "label": "Titel",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "start_date",
+      "label": "Startdatum",
+      "type": "date",
+      "required": false
+    },
+    {
+      "name": "end_date",
+      "label": "Enddatum",
+      "type": "date",
+      "required": false
+    },
+    {
+      "name": "time",
+      "label": "Uhrzeit",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "description",
+      "label": "Beschreibung",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "location_name",
+      "label": "Ort",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "location_postal_code",
+      "label": "PLZ",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "location_city",
+      "label": "Stadt",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "category",
+      "label": "Kategorie",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "series",
+      "label": "Sammelbegriff",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "source_type",
+      "label": "QuelleTyp",
+      "type": "string",
+      "required": false
+    },
+    {
+      "name": "source_file",
+      "label": "QuelleDatei",
+      "type": "string",
+      "required": false
+    }
+  ],
+  "template_record": {
+    "id": "",
+    "title": "",
+    "start_date": "",
+    "end_date": "",
+    "time": "",
+    "description": "",
+    "location_name": "",
+    "location_postal_code": "",
+    "location_city": "",
+    "category": "",
+    "series": "",
+    "url": "",
+    "source_type": "",
+    "source_file": ""
+  }
+}

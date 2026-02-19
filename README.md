@@ -2,7 +2,7 @@
 
 Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./structured-data`.
 
-## 5-Minuten-Quickstart (vollständig, End-to-End)
+## 5-Minuten-Quickstart
 
 | Phase | Zweck | Befehl | Ergebnis | Internet |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@ Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./stru
 | 2. Filter-Refresh | aktuelle Labels/IDs holen | `python3 main.py --update-filters` | `filter/q.sammelbegrif.id.json`, `filter/q.kat.id.json` | Ja |
 | 3. Filter-Discovery | IDs/Labels anzeigen | `python3 main.py --list-filters` | Sicht auf nutzbare Filterwerte | Nein (bei vorhandenem Cache) |
 | 4. Ingestion | Kalenderdaten laden | `python3 main.py --profile DOWNLOAD_FRAUENTAGE` | `structured-data/loadData_20307012.json`, `ical_20307012.ics`, `jsonld_20307012_generated.json` + `structured-data/history/*` | Ja |
-| 5. Pre-Processing | Daten bereinigen/normalisieren | `python3 main.py --preprocess` | `output/boilerplate/runtime-snapshots/*`, `output/boilerplate/schema-boilerplates/*` | Nein |
+| 5. Pre-Processing | Daten bereinigen/normalisieren | `python3 main.py --preprocess` | `output/boilerplate/runtime-snapshots/*` (Schemaquelle: `config/schema/canonical_event_v1.json`) | Nein |
 | 6. Post-Processing | CSV/XML exportieren | `python3 main.py --postprocess --from-boilerplate` | `output/*.csv`, `output/*.xml` | Nein |
 | 7. QA | Exporte validieren | `python3 main.py --lint-csv --lint-recursive` | Lint-Report (OK/FAIL) | Nein |
 
@@ -53,14 +53,15 @@ python3 main.py --profile DOWNLOAD_FRAUENTAGE --backend auto
 - Rohdaten aktuell: `structured-data/`
 - Rohdaten-Historie: `structured-data/history/`
 - Laufzeit-Snapshots: `output/boilerplate/runtime-snapshots/`
-- Schema-Boilerplates: `output/boilerplate/schema-boilerplates/`
+- Kanonisches Schema (versioniert): `config/schema/canonical_event_v1.json`
+- Source-nahe Schema-Boilerplates (optional): `output/boilerplate/schema-boilerplates/source_*.json`
 - Exportdateien: `output/*.csv`, `output/*.xml`
 
 ## Dateien
 
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
 - `app/fetch_structured_data.py`: Downloader-Implementierung (JSON, ICS, erzeugtes JSON-LD, History-Snapshots).
-- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots, kanonische Schema-Boilerplate und source-nahe Schema-Boilerplates).
+- `app/preprocess_data.py`: nur Pre-Processing (bereinigt Daten, erzeugt Runtime-Snapshots; source-nahe Schema-Boilerplates optional).
 - `app/postprocess_output.py`: Post-Processing (CSV/XML Export in `output/`) aus Rohdaten oder Boilerplate.
 - `app/lint_csv.py`: CSV-Linting via Frictionless (Struktur + optional Header-Schema-Check).
 - `app/process_data_pipeline.py`: gemeinsame Pipeline-Implementierung.
@@ -358,8 +359,8 @@ Die Pipeline kann in zwei Modi arbeiten:
   - liest Rohdaten aus `structured-data/*.json`
   - führt Normalisierung + Pre-Processing aus (kanonisches Datums-/Zeitformat)
   - schreibt Runtime-Snapshots nach `output/boilerplate/runtime-snapshots/`
-  - erzeugt einmalig eine Schema-Boilerplate in `output/boilerplate/schema-boilerplates/`
-  - erzeugt pro Eingangsdatei source-nahe Schema-Boilerplates (`source_<datei>.json`)
+  - nutzt standardmäßig das versionierte Schema aus `config/schema/canonical_event_v1.json`
+  - erzeugt optional pro Eingangsdatei source-nahe Schema-Boilerplates (`source_<datei>.json`)
   - erzeugt optional CSV/XML
 - `input.mode=boilerplate`:
   - liest bereits bereinigte Datensätze aus `output/boilerplate/runtime-snapshots/boilerplate_*.json`
@@ -374,16 +375,20 @@ Es müssen Runtime-Snapshot-Dateien in `output/boilerplate/runtime-snapshots/` (
 Schema-Hinweis:
 Die Felddefinitionen (Reihenfolge/Namen) kommen primär aus der Schema-Boilerplate.
 `export.fields` und `export.field_mappings` in der Config sind damit optional und dienen als Override.
-Die source-nahen Schema-Boilerplates entsprechen den Feldern der Eingangsdateien und können als Bearbeitungsgrundlage dienen.
+Im Projekt zeigt `schema.file` auf `config/schema/canonical_event_v1.json` (versionierte Source of Truth).
+Source-nahe Schema-Boilerplates sind optional und standardmäßig deaktiviert.
 
 ### Artefakte unter `output/boilerplate/`
 
 - `output/boilerplate/runtime-snapshots/`
   - enthält die bereinigten Laufzeitdaten (`boilerplate_<source>.json`) für den Export-Flow.
-- `output/boilerplate/schema-boilerplates/canonical_event_v1.json`
-  - kanonische Felddefinition für Export-Reihenfolge und Standard-Labels.
 - `output/boilerplate/schema-boilerplates/source_<source>.json`
-  - source-nahe Felddefinitionen aus den Rohdateien (z. B. `loadData_20307012.json`), gedacht als anpassbare Bearbeitungsgrundlage.
+  - optionale source-nahe Felddefinitionen aus den Rohdateien (nur wenn `schema.source_boilerplates.enabled=true`).
+
+### Kanonisches Schema unter `config/schema/`
+
+- `config/schema/canonical_event_v1.json`
+  - versionierte Felddefinition für Export-Reihenfolge und Standard-Labels (empfohlene Source of Truth).
 
 ### Empfohlener 2-Phasen-Flow (echte Übergabe)
 
@@ -540,7 +545,7 @@ Wichtige Optionen in der Config:
   - `input.boilerplate_files` (optionale explizite Dateiliste statt `boilerplate_dir`)
 - Schema:
   - `schema.enabled`
-  - `schema.file` (leer = automatisch `output/boilerplate/schema-boilerplates/canonical_event_v1.json`)
+  - `schema.file` (im Projekt standardmäßig `config/schema/canonical_event_v1.json`; leer = automatische Datei unter `output/boilerplate/schema-boilerplates/`)
   - `schema.source_boilerplates.enabled` (erzeugt source-nahe Schema-Boilerplates pro Input-Datei)
   - `schema.source_boilerplates.dir` (leer = automatisch `output/boilerplate/schema-boilerplates/`)
 - Pre-Processing:
@@ -578,7 +583,7 @@ PROCESS_EXPORT_FORMATS=csv,xml PROCESS_OUTPUT_DIR=output python3 main.py --postp
 PROCESS_INPUT_MODE=boilerplate PROCESS_BOILERPLATE_DIR=output/boilerplate/runtime-snapshots python3 main.py --postprocess
 
 # Eigenes Schema-Boilerplate verwenden
-PROCESS_SCHEMA_FILE=output/boilerplate/schema-boilerplates/canonical_event_v1.json python3 main.py --postprocess
+PROCESS_SCHEMA_FILE=config/schema/canonical_event_v1.json python3 main.py --postprocess
 
 # Source-nahe Schema-Boilerplates deaktivieren
 PROCESS_SCHEMA_SOURCE_BOILERPLATES_ENABLED=false python3 main.py --preprocess

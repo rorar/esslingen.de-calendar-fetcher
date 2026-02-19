@@ -150,8 +150,8 @@ Du möchtest das Trennzeichen der CSV ändern (z. B. Komma statt Semikolon) oder
 
 Vielleicht wunderst du dich, warum in der CSV "Titel" steht, obwohl im JSON `name` oder `titel` steht.
 
-Das Tool nutzt ein **Standard-Schema** (genannt `canonical_event_v1`), das automatisch generiert wird.
-Die Definition liegt in: `output/boilerplate/schema-boilerplates/canonical_event_v1.json`.
+Das Tool nutzt ein **Standard-Schema** (genannt `canonical_event_v1`) als versionierte Source of Truth.
+Die Definition liegt in: `config/schema/canonical_event_v1.json`.
 
 Hier sind alle verfügbaren Standard-Felder:
 
