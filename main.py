@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import socket
 import subprocess
 import sys
 import unicodedata
 from pathlib import Path
 from typing import Callable
+from urllib.request import ProxyHandler, Request, build_opener
 
 # Download Every Date: --series-id=-1 --anz=-1
 DOWNLOAD_EVERY_DATE = {"series_ids": ["-1"], "anz": "-1", "cat_ids": []}
@@ -160,6 +163,187 @@ def update_filters(filter_dir: Path, backend: str = "auto", quiet: bool = False)
     if quiet:
         args.append("--quiet")
     return run_python_script(script, args)
+
+
+def load_filter_items_with_refresh(
+    filter_file: Path,
+    filter_dir: Path,
+    backend: str,
+    updater: Callable[[Path, str, bool], int] = update_filters,
+) -> list[dict[str, str]]:
+    try:
+        items = load_filter_items(filter_file)
+        if items:
+            return items
+    except FileNotFoundError:
+        pass
+
+    rc = updater(filter_dir, backend, True)
+    if rc != 0:
+        raise RuntimeError(f"Filter konnten nicht aktualisiert werden ({filter_file.name})")
+    return load_filter_items(filter_file)
+
+
+def list_filters(
+    filter_dir: Path,
+    backend: str = "auto",
+    updater: Callable[[Path, str, bool], int] = update_filters,
+) -> int:
+    sammel_file = filter_dir / "q.sammelbegrif.id.json"
+    cat_file = filter_dir / "q.kat.id.json"
+
+    try:
+        sammel_items = load_filter_items_with_refresh(sammel_file, filter_dir, backend, updater=updater)
+        cat_items = load_filter_items_with_refresh(cat_file, filter_dir, backend, updater=updater)
+    except Exception as exc:
+        print(str(exc))
+        return 1
+
+    print(f"Sammelbegriffe (q.sammelbegrif.id): {len(sammel_items)}")
+    for item in sammel_items:
+        item_id = str(item.get("id", "")).strip()
+        label = str(item.get("label", "")).strip()
+        if item_id or label:
+            print(f"- {item_id}: {label}")
+
+    print("")
+    print(f"Kategorien (q.kat.id): {len(cat_items)}")
+    for item in cat_items:
+        item_id = str(item.get("id", "")).strip()
+        label = str(item.get("label", "")).strip()
+        level = str(item.get("level", "")).strip()
+        suffix = f" ({level})" if level else ""
+        if item_id or label:
+            print(f"- {item_id}: {label}{suffix}")
+
+    return 0
+
+
+def has_frictionless() -> bool:
+    try:
+        import frictionless  # type: ignore # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def has_stealth_requests() -> bool:
+    try:
+        import stealth_requests  # type: ignore # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+def check_dns(hostname: str) -> tuple[bool, str]:
+    try:
+        socket.getaddrinfo(hostname, 443)
+        return True, f"DNS aufloesbar fuer {hostname}"
+    except Exception as exc:
+        return False, f"DNS-Fehler fuer {hostname}: {exc}"
+
+
+def check_https(url: str) -> tuple[bool, str]:
+    try:
+        req = Request(url, headers={"User-Agent": "esslingen-calendar-fetcher-doctor/1.0"})
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(req, timeout=10) as resp:
+            status = int(getattr(resp, "status", 200) or 200)
+        if 200 <= status < 400:
+            return True, f"HTTPS erreichbar ({status})"
+        return False, f"HTTPS unerwarteter Status ({status})"
+    except Exception as exc:
+        return False, f"HTTPS-Check fehlgeschlagen: {exc}"
+
+
+def doctor(filter_dir: Path, process_config: str) -> int:
+    ok = 0
+    warn = 0
+    fail = 0
+
+    def report(status: str, title: str, detail: str) -> None:
+        print(f"[{status}] {title}: {detail}")
+
+    def add_ok(title: str, detail: str) -> None:
+        nonlocal ok
+        ok += 1
+        report("OK", title, detail)
+
+    def add_warn(title: str, detail: str) -> None:
+        nonlocal warn
+        warn += 1
+        report("WARN", title, detail)
+
+    def add_fail(title: str, detail: str) -> None:
+        nonlocal fail
+        fail += 1
+        report("FAIL", title, detail)
+
+    print("Doctor Report")
+    print("=============")
+
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    if sys.version_info >= (3, 10):
+        add_ok("Python", f"{py_ver} (>= 3.10)")
+    else:
+        add_fail("Python", f"{py_ver} (< 3.10, nicht unterstuetzt)")
+
+    config_path = Path(process_config)
+    if config_path.exists():
+        add_ok("Config", f"Gefunden: {config_path}")
+    else:
+        add_warn("Config", f"Nicht gefunden: {config_path}")
+
+    if Path("structured-data").exists():
+        add_ok("structured-data", "Verzeichnis vorhanden")
+    else:
+        add_warn("structured-data", "Verzeichnis fehlt (wird bei Download erzeugt)")
+
+    if Path("output").exists():
+        add_ok("output", "Verzeichnis vorhanden")
+    else:
+        add_warn("output", "Verzeichnis fehlt (wird bei Processing erzeugt)")
+
+    if shutil.which("curl"):
+        add_ok("curl", "Systembefehl verfuegbar")
+    else:
+        add_warn("curl", "Nicht verfuegbar (Fallback: urllib)")
+
+    if has_stealth_requests():
+        add_ok("stealth_requests", "Python-Paket verfuegbar")
+    else:
+        add_warn("stealth_requests", "Nicht installiert (optional)")
+
+    if has_frictionless():
+        add_ok("frictionless", "Python-Paket verfuegbar")
+    else:
+        add_warn("frictionless", "Nicht installiert (nur fuer CSV-Lint noetig)")
+
+    if (filter_dir / "q.sammelbegrif.id.json").exists() and (filter_dir / "q.kat.id.json").exists():
+        add_ok("Filter Cache", f"Filterdateien vorhanden in {filter_dir}")
+    else:
+        add_warn("Filter Cache", f"Unvollstaendig in {filter_dir} (nutze --update-filters)")
+
+    dns_ok, dns_detail = check_dns("www.esslingen.de")
+    if dns_ok:
+        add_ok("Netzwerk/DNS", dns_detail)
+    else:
+        add_warn("Netzwerk/DNS", dns_detail)
+
+    https_ok, https_detail = check_https("https://www.esslingen.de")
+    if https_ok:
+        add_ok("Netzwerk/HTTPS", https_detail)
+    else:
+        add_warn("Netzwerk/HTTPS", https_detail)
+
+    print("")
+    print(f"Summary: OK={ok} WARN={warn} FAIL={fail}")
+    if fail:
+        print("Empfehlung: FAIL-Punkte zuerst beheben.")
+        return 1
+    if warn:
+        print("Hinweis: WARN-Punkte sind optional/umgebungsabhaengig, aber pruefenswert.")
+    return 0
 
 
 def run_preprocess(config_path: str) -> int:
@@ -412,6 +596,16 @@ def main() -> int:
         help="Refresh filter mappings via app/fetch_filter_options.py",
     )
     parser.add_argument(
+        "--list-filters",
+        action="store_true",
+        help="List cached/current filter options (q.sammelbegrif.id and q.kat.id).",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="Run local environment checks (Python, tools, optional deps, network, paths).",
+    )
+    parser.add_argument(
         "--backend",
         default="auto",
         choices=["auto", "stealth", "stealth-requests", "curl", "urllib"],
@@ -471,12 +665,14 @@ def main() -> int:
     parser.add_argument(
         "--process-config",
         default="config/processing_config.json",
-        help="Path to processing config for --preprocess/--postprocess",
+        help="Path to processing config for --preprocess/--postprocess/--lint-csv/--doctor",
     )
     args = parser.parse_args()
 
     filter_dir = Path(args.filter_dir)
-    processing_requested = bool(args.preprocess or args.postprocess or args.lint_csv)
+    non_download_actions = bool(
+        args.update_filters or args.preprocess or args.postprocess or args.lint_csv or args.list_filters or args.doctor
+    )
 
     if args.from_boilerplate and not args.postprocess:
         print("--from-boilerplate kann nur zusammen mit --postprocess verwendet werden")
@@ -487,7 +683,17 @@ def main() -> int:
         if rc != 0:
             return rc
 
-    run_download_step = args.profile is not None or (not processing_requested and not args.update_filters)
+    if args.list_filters:
+        rc = list_filters(filter_dir, backend=args.backend)
+        if rc != 0:
+            return rc
+
+    if args.doctor:
+        rc = doctor(filter_dir, args.process_config)
+        if rc != 0:
+            return rc
+
+    run_download_step = args.profile is not None or (not non_download_actions)
     if run_download_step:
         if args.profile is None:
             args.profile = "frauentage"
@@ -532,7 +738,7 @@ def main() -> int:
         if rc != 0:
             return rc
 
-    if args.update_filters and args.profile is None and not processing_requested:
+    if args.update_filters and args.profile is None and not (args.preprocess or args.postprocess or args.lint_csv):
         return 0
 
     return 0

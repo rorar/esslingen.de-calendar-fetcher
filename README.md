@@ -2,6 +2,39 @@
 
 Dieses Projekt lädt strukturierte Kalenderdaten von `esslingen.de` nach `./structured-data`.
 
+## 5-Minuten-Quickstart (neu im Projekt)
+
+1. Optionales Setup mit VENV und Paketen
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+2. System-/Umgebungscheck ausführen
+
+```bash
+python3 main.py --doctor
+```
+
+3. Filter-Optionen aktualisieren
+
+```bash
+python3 main.py --update-filters
+```
+
+4. Verfügbare Filter anzeigen (IDs + Labels)
+
+```bash
+python3 main.py --list-filters
+```
+
+5. Erstes Profil ausführen
+
+```bash
+python3 main.py --profile DOWNLOAD_FRAUENTAGE
+```
+
 ## Dateien
 
 - `main.py`: empfohlener Einstieg über vordefinierte Profile.
@@ -52,6 +85,14 @@ Hinweis: Wenn Installation wegen DNS fehlschlägt, funktionieren Downloads weite
 
 `main.py` steuert den Download über Profile und ruft intern `app/fetch_structured_data.py` auf.
 
+### Schritt 0 (optional): Doctor-Check ausführen
+
+```bash
+python3 main.py --doctor
+```
+
+Der Doctor prüft Python-Version, Verzeichnisse, optionale Pakete, `curl`, Filter-Cache und Netzwerkbasischecks.
+
 ### Schritt 1 (empfohlen): Filter-Optionen aktualisieren
 
 ```bash
@@ -77,6 +118,14 @@ Rohdaten in `structured-data/` oder Runtime-Snapshots in `output/boilerplate/run
 **Hinweis:** 
 Bei fehlenden Cache-Dateien wird automatisch ein Update versucht. Für reproduzierbare Ergebnisse sollte `--update-filters` trotzdem zuerst ausgeführt werden.
 Automatische Refreshes bei Label-Auflösung laufen intern leise; der explizite Aufruf `--update-filters` zeigt den vollen Output.
+
+### Schritt 1b (optional): Filter anzeigen
+
+```bash
+python3 main.py --list-filters
+```
+
+Gibt `q.sammelbegrif.id` und `q.kat.id` mit IDs/Labels aus, damit Profile leichter konfiguriert werden können.
 
 ### Schritt 2: Profil ausführen
 
@@ -166,85 +215,97 @@ python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Re
 
 ## Copy/Paste Profile
 
-1. Filter-Listen aktualisieren
+1. Doctor-Check
+
+```bash
+python3 main.py --doctor
+```
+
+2. Filter-Listen aktualisieren
 
 ```bash
 python3 main.py --update-filters
 ```
 
-2. Alle Termine (Default-Kalender)
+3. Filter-IDs/Labels anzeigen
+
+```bash
+python3 main.py --list-filters
+```
+
+4. Alle Termine (Default-Kalender)
 
 ```bash
 python3 main.py --profile DOWNLOAD_EVERY_DATE
 ```
 
-3. Nur Frauenwochen
+5. Nur Frauenwochen
 
 ```bash
 python3 main.py --profile DOWNLOAD_FRAUENTAGE
 ```
 
-4. Nur Frauenwochen mit automatischer Backend-Reihenfolge
+6. Nur Frauenwochen mit automatischer Backend-Reihenfolge
 
 ```bash
 python3 main.py --profile DOWNLOAD_FRAUENTAGE --backend auto
 ```
 
-5. SIMPLE Kategorie per normalisiertem Label
+7. SIMPLE Kategorie per normalisiertem Label
 
 ```bash
 python3 main.py --profile DOWNLOAD_CAT_BÜHNE_THEATER
 ```
 
-6. ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
+8. ADVANCED Kategorien per Label (mehrere Werte mit Delimiter)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_CAT_LABEL=Bühne · Theater;Vorträge Diskussion'
 ```
 
-7. ADVANCED Kategorien per IDs (mehrere Werte)
+9. ADVANCED Kategorien per IDs (mehrere Werte)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_CAT_ID=908106,908119|908120'
 ```
 
-8. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
+10. ADVANCED Sammelbegriffe per Labels (mehrere Werte)
 
 ```bash
 python3 main.py --profile 'DOWNLOAD_SAMMEL_LABEL=Frauenwochen,Welcome Service Region Stuttgart'
 ```
 
-9. Kombination Serie + Kategorie (Direktaufruf des Fetchers)
+11. Kombination Serie + Kategorie (Direktaufruf des Fetchers)
 
 ```bash
 python3 app/fetch_structured_data.py --series-id=330100 --cat-id=908106 --anz=-1 --backend auto
 ```
 
-10. Nur Pre-Processing über `main.py`
+12. Nur Pre-Processing über `main.py`
 
 ```bash
 python3 main.py --preprocess
 ```
 
-11. Nur Post-Processing über `main.py`
+13. Nur Post-Processing über `main.py`
 
 ```bash
 python3 main.py --postprocess
 ```
 
-12. Post-Processing mit eigener Config über `main.py`
+14. Post-Processing mit eigener Config über `main.py`
 
 ```bash
 python3 main.py --postprocess --process-config config/processing_config.json
 ```
 
-13. Download + Post-Processing in einem Lauf
+15. Download + Post-Processing in einem Lauf
 
 ```bash
 python3 main.py --profile frauentage --postprocess
 ```
 
-14. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
+16. 2-Phasen-Flow: Preprocess und danach Export aus Boilerplate
 
 ```bash
 python3 main.py --preprocess
@@ -254,7 +315,7 @@ python3 main.py --preprocess
 python3 main.py --postprocess --from-boilerplate
 ```
 
-15. CSV-Linting der Exportdateien (Frictionless)
+17. CSV-Linting der Exportdateien (Frictionless)
 
 ```bash
 python3 main.py --lint-csv
@@ -758,6 +819,12 @@ Die Downloader (`main.py`, `app/fetch_structured_data.py`, `app/fetch_filter_opt
 Der tatsächlich verwendete Backend-Pfad wird ausgegeben, z. B. `Download backend(s): curl`.
 
 ## Troubleshooting
+
+Allgemeiner Schnellcheck:
+
+```bash
+python3 main.py --doctor
+```
 
 ### `Could not resolve host: www.esslingen.de`
 

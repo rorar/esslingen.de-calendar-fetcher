@@ -298,6 +298,64 @@ class TestMainProfiles(unittest.TestCase):
             rc = main.main()
         self.assertEqual(rc, 1)
 
+    def test_list_filters_uses_cached_files(self) -> None:
+        rc = main.list_filters(self.filter_dir, backend="auto")
+        self.assertEqual(rc, 0)
+
+    def test_main_list_filters_only_does_not_run_download(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--list-filters"]),
+            patch("main.list_filters", return_value=0) as mocked_list_filters,
+            patch("main.run_download") as mocked_download,
+            patch("main.resolve_profile") as mocked_profile,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_not_called()
+        mocked_profile.assert_not_called()
+        mocked_list_filters.assert_called_once_with(Path("filter"), backend="auto")
+
+    def test_main_doctor_only_does_not_run_download(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--doctor"]),
+            patch("main.doctor", return_value=0) as mocked_doctor,
+            patch("main.run_download") as mocked_download,
+            patch("main.resolve_profile") as mocked_profile,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 0)
+        mocked_download.assert_not_called()
+        mocked_profile.assert_not_called()
+        mocked_doctor.assert_called_once_with(Path("filter"), "config/processing_config.json")
+
+    def test_main_doctor_failure_stops_execution(self) -> None:
+        with (
+            patch("sys.argv", ["main.py", "--doctor"]),
+            patch("main.doctor", return_value=1) as mocked_doctor,
+            patch("main.run_download") as mocked_download,
+        ):
+            rc = main.main()
+
+        self.assertEqual(rc, 1)
+        mocked_doctor.assert_called_once()
+        mocked_download.assert_not_called()
+
+    def test_doctor_returns_zero_with_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            filter_dir = Path(tmp_dir) / "filter"
+            filter_dir.mkdir(parents=True, exist_ok=True)
+            with (
+                patch("main.check_dns", return_value=(False, "dns warn")),
+                patch("main.check_https", return_value=(False, "https warn")),
+                patch("main.has_stealth_requests", return_value=False),
+                patch("main.has_frictionless", return_value=False),
+                patch("main.shutil.which", return_value=None),
+            ):
+                rc = main.doctor(filter_dir, "missing_config.json")
+            self.assertEqual(rc, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
